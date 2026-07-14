@@ -20,6 +20,7 @@ identical trained vs. untrained).
 | path | what |
 |---|---|
 | **[blogpost.md](blogpost.md)** | The full write-up, with the central figure and the honesty caveats. |
+| **[paper/paper.pdf](paper/paper.pdf)** | The same result as a short scientific paper (LaTeX source in [`paper/`](paper/)). |
 | **[task/task_description.md](task/task_description.md)** | The CLBench-derived tasks — real prompts, the memory-only reward, and the anti-cheating design. |
 | **[data/](data/)** | The underlying numbers as CSV. See the [data dictionary](data/README.md). |
 | **[assets/](assets/)** | The figures. |
