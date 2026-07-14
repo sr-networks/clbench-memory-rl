@@ -1,35 +1,26 @@
 # Data
 
-Every number in the blog post and both figures comes from these files. Per-epoch values were fetched from
-the Fireworks RFT job metrics (`curves.average.*`); carry-rates were computed from the downloaded rollout
-traces. Runs are identified by their Fireworks job IDs so each row is traceable to its source job.
+Every number in the blog post and both figures comes from these files. The spectrum numbers were computed
+from the downloaded rollout traces of the Fireworks RFT jobs (per-scan `SCAN_OCC` metrics) plus a
+deterministic engine replay for the no-memory bound; the second-task numbers were fetched from the job
+metrics. Runs are identified by their Fireworks job IDs so each row is traceable to its source job.
 
-## `spectrum_occ_by_epoch.csv`
-Per-epoch training curves for the five spectrum runs (the left panel of `assets/memory_result.png`).
-
-| column | meaning |
-|---|---|
-| `run` | Fireworks RFT job ID (`tnfxdqkv` probe, `fva3tx6z` A, `geote9qj` B, `dtbn6lhm` C, `c4jk2e4z` C′) |
-| `arm` | A = explicit prompt / B = scrambled control / C, C′ = weak prompt / probe = lr≈0 base |
-| `prompt` | `explicit` or `weak` |
-| `echo` | memory channel: `real` (own previous report) or `scrambled` (random in-band freqs) |
-| `epoch` | 0-indexed training epoch |
-| `mean_occ` | mean occupied-IoU (the reward signal / task score) |
-| `memory_gain` | late-scan minus early-scan occ (measured, never rewarded) |
-| `score` | raw RFT reward (3 × occ terms) |
-| `mean_avail` | availability of scored scans |
-
-## `spectrum_results_summary.csv`
-One row per arm with start/end endpoints. `carry_start`/`carry_end` are the **memory carry-rate** (fraction
-of the echoed running list preserved into the next report), computed from traces — this is the headline
-memory metric and is *not* in the raw job curves.
+## `occ_by_scan_bin.csv`  *(the central figure — `assets/occ_by_scan_bin.png`)*
+Occupied-IoU pooled by scan-position bin (scans 1–5, 6–10, …, 26–30) for the four conditions.
 
 | column | meaning |
 |---|---|
-| `run`, `arm`, `prompt`, `echo` | as above; plus `(local)` reference rows for the oracle and memoryless floors |
-| `occ_start`, `occ_end` | occupied-IoU at first/last epoch |
-| `carry_start`, `carry_end` | memory carry-rate at first/last epoch (blank where not applicable) |
-| `note` | one-line interpretation |
+| `scan_bin` | scan-position window within the 30-scan episode (`1–5`, `6–10`, …, `26–30`) |
+| `no_mem` | occ-IoU of the scripted perfect memoryless agent (upper bound for any memoryless policy) |
+| `icl` | occ-IoU of the untrained base model with full history in the prompt, no notepad (job `g7dncu2c`, ep0) |
+| `notepad_untrained_ep0` | occ-IoU of the untrained base *with* the notepad tools (4 runs at ep0, pooled) |
+| `notepad_trained_ep4` | occ-IoU after RL (4 runs at ep4, pooled): `s8e07n53`/`yp8deoer`/`kym4znjc`/`wqjyy66p` |
+| `notepad_trained_run_min` / `_run_max` | min / max of the 4 per-run means in that bin (the whisker) |
+| `n_trained_scans` | number of trained-condition scan observations pooled in that bin (falls late = survivorship) |
+
+Notes: `no-mem` is a deterministic engine replay on the same 24 bands, not a model. The notepad bars pool
+4 replicate GRPO runs (identical config, different seed); at ep4 completion across the four is
+100/97/60/90%, so late bins carry a disclosed survivorship bias (`n_trained_scans` drops from 3840 to 3171).
 
 ## `dbx_second_task.csv`
 The `database_exploration` (second task) results — the flat null, the pre-seed learnability diagnostic, and
@@ -47,6 +38,7 @@ the sufficiency check (`assets/dbx_second_task.png`).
 | `note` | context |
 
 ### Reference values used in the figures (from the writeup, not tabulated per-epoch)
-- Spectrum: memoryless floor occ ≈ 0.16; accumulate-all oracle occ 0.447 ± 0.042; explicit-prompt carry
-  ceiling 0.967.
-- dbx: null band max-ever acc 0.039; gpt-oss-120b sufficiency 0.67 & 0.93 on the same pre-seeded notepad.
+- Spectrum: no-memory upper bound occ ≈ 0.26; late-half (scans 16–30) occ — ICL 0.297, notepad-untrained
+  ~0.454, notepad-trained 0.607; scan-1 occ flat trained vs untrained (0.216 → 0.217).
+- dbx: null band max-ever acc 0.039; pre-seeded 1.7B acc 0.057 at ep0; gpt-oss-120b sufficiency 0.67–0.93
+  on the same pre-seeded notepad.

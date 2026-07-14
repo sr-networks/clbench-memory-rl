@@ -9,46 +9,42 @@ measures. (Benchmark canary strings from the original templates are intentionall
 ## Task 1 — Blind spectrum monitoring *(the task that trains)*
 
 ### Setup
-The agent monitors one fixed radio band containing ~11–14 transmitters (each ~8 MHz wide, in a 180 MHz
-band). It receives **12 sequential scans of the same band**. In any given scan only ~3 transmitters are
-active; the detector is noisy (miss probability 0.15, false-alarm probability 0.2). Dormant transmitters
-still *occupy* the band — so to report all occupied regions the agent must **remember** transmitters seen in
-earlier scans and keep reporting them while they're silent.
+The agent monitors one fixed radio band containing ~11–14 transmitters (each ~8 MHz wide, in a ~180 MHz
+band). It receives **30 sequential scans of the same band**. In any given scan only ~3 transmitters are
+active; the detector is noisy (missed detections, false alarms). Dormant transmitters still *occupy* the
+band — so to report all occupied regions the agent must **remember** transmitters seen in earlier scans and
+keep reporting them while they're silent. The per-scan score is **occupied-IoU** (occ): the overlap between
+the frequency ranges reported occupied and the true persistent transmitter set, 0 to 1.
 
-### The memory channel
-Context is windowed to the current scan. After each report, the environment echoes the model's **own
-previous report** back to it as a running list. That self-authored register is the *only* information that
-crosses from one scan to the next — memory here is "what you chose to keep in your list."
+### The two memory modes we compare
+- **ICL (in-context learning):** nothing is wiped. Every past scan, report and result stays in the prompt,
+  and the model re-reads its own history. There is no notepad. This is CLBench's strong baseline.
+- **Notepad:** the context is windowed to the **current scan only**. The model is given `notepad_read` /
+  `notepad_write` tools and a short (~4000-char) buffer it may overwrite each turn. That buffer is the
+  **only** information that crosses from one scan to the next. Maintaining it is the *agent's own job* —
+  it must choose to write. On this page, "memory" always means this notepad, never the model's weights or
+  its in-conversation context.
 
-### System prompt (the "explicit" variant, verbatim)
-```
-You are a spectrum monitoring analyst watching a radio-frequency band with multiple transmitter channels.
-You receive a SERIES of scans of the SAME fixed band. Each scan lists noisy detected peaks (freq, power,
-width). Only SOME transmitters are active in any given scan; others are temporarily dormant and reappear in
-later scans. The full set of transmitters is unknown — you must INFER it by accumulating evidence ACROSS
-scans.
+The scripted **no-memory upper bound** — a perfect agent that reports exactly the currently-visible channels
+with perfect widths, run through the real task engine — scores occ ≈ **0.26**. It is the reference line no
+memoryless policy can beat.
 
-Each scan, call submit_report with two equal-length lists, center_freqs and bandwidths (MHz), naming ALL
-transmitter regions you believe persistently occupy the band — INCLUDING ones dormant in the current scan
-but seen in earlier scans. Use the current peaks as new evidence, but report the full persistent set you
-have inferred from the whole scan history so far, not just the current peaks. More complete and accurate
-reports score higher.
-```
-
-The **weak** prompt used in the training arms (C/C′) describes the task and the running list but **removes**
-the accumulation instruction (the "INCLUDING ones dormant …" paragraph) — so accumulation has to be *learned*
-rather than *told*.
+### System prompt (notepad arm — paraphrase)
+The notepad system prompt states the task (a series of scans of one fixed band; only some transmitters
+visible per scan; dormant ones still occupy the band) and teaches the **procedure**: on every scan, read the
+notepad, merge the current peaks into it, write back the complete running set of channels you've ever seen
+(center frequency + bandwidth), and report that full persistent set — not just what's visible now. The ICL
+arm gets the same task description but re-reads its full history instead of a notepad. *(Paraphrased rather
+than quoted verbatim, and the benchmark's canary strings are omitted.)*
 
 ### An example scan turn
 ```
---- Scan 4/12 ---
+--- Scan 4/30 ---
 
 Scan metadata:
   scan_id: s-4f1a
-  timestamp_utc: 2026-05-02T14:07:33Z
   sensor_id: sensor-2
   detector_version: 3.1
-  integration_time_ms: 200
   estimated_noise_floor_dbm: -98.4
 
 Detected peaks:
@@ -57,28 +53,61 @@ Detected peaks:
   - peak_id: p2 | freq: 155.2 MHz | power: -80.5 dBm | width: 7.9 MHz
 Band: 20-200 MHz
 
-Submit your report.
+Update your notepad, then submit your report.
 ```
-The model then calls `submit_report(center_freqs=[...], bandwidths=[...])` naming **every** region it
-believes is occupied — including transmitters last seen in scans 1–3 that produced no peak this time.
+The model reports **every** region it believes is occupied — including transmitters last seen in earlier
+scans that produced no peak this time — using only what it kept in the notepad.
 
-### Scoring
-- **Per-scan reward** = `3 × occupied-IoU` between the reported regions and the true occupied set. A
-  memoryless (current-scan-only) agent scores occ ≈ **0.16**; a naive accumulate-all agent ≈ **0.447**;
-  an agent that also filters false alarms tops out around **0.50–0.55**.
-- **`memory_gain`** (late-scan minus early-scan occ) is *measured but never rewarded* — rewarding a delta
-  invites sandbagging.
-- **carry-rate** (fraction of the echoed running list preserved into the next report) is read from traces
-  as the cleanest behavioral memory signal.
+### The reward — paid only for memory
+RL uses one number per episode, computed from the per-scan tool-result metrics (source of truth:
+`spectrum_reward.py · compute_spectrum_dormant_completion_reward`):
 
-### Arms
-| arm | prompt | echoed running list |
+```
+Score = 3 × ( mean_dorm − pen_anchor − pen_carpet − pen_wmax − pen_complete )
+
+mean_dorm    = average SCAN_DORM over scans 2…n (scan 1 has no recallable channels)
+               SCAN_DORM = Tversky overlap (α=β=1) between the report and the set of channels that are
+               INVISIBLE this scan but were seen earlier (the "recallable" set). Currently-visible
+               channels are ignored entirely — so the reward is orthogonal to single-step task skill.
+pen_anchor   = max(0, anchor − a0 − 0.10)      anchor = mean occ over scans 1–2 (near-memory-free);
+                                               a0 = scripted memoryless floor per band variant
+                                               (0.2082 / 0.2141 / 0.2368)
+pen_carpet   = 4.0 × max(0, mean_rarea − 1.15) rarea = reported area ÷ true occupied area
+pen_wmax     = 1.0 × max(0, mean_wmax − 1.5)   wmax  = widest reported region ÷ widest true channel
+pen_complete = 1.5 × max(0, 30 − n − 2)/30     n = scans completed; exact-zero for 28–30
+
+Special case: 0 scans completed (first-turn format failure) → Score = −0.2 flat.
+```
+
+Every hinge is **exact-zero on honest play** (all four measured ≈0 at epoch 0 in every run), so on honest
+rollouts the reward is literally `3 × mean recallable-coverage` — a memory-only currency. `memory_gain`
+(late-scan minus early-scan occ) is *measured but never rewarded* — rewarding a delta invites sandbagging.
+
+### Anti-cheating design
+The guards were each built to defeat a cheat we simulated offline before training:
+
+1. **Reward orthogonal to visible channels** — coverage is scored only on the *recallable* (invisible-now)
+   set, so "get better at the current scan" earns nothing. Task skill and memory are separated by
+   construction.
+2. **Anchor pin** (`pen_anchor`) — scans 1–2 are held to the memoryless floor, so no-memory skill gains
+   don't pay and can be taxed.
+3. **Carpet + width guards** (`pen_carpet`, `pen_wmax`) — defeat "blanket the whole band" and the
+   "behave honestly on scans 1–2, then blanket" (latecarpet) cheats; false positives are scored against
+   never-seen space, which an honest memory policy never paints but a **weight-baked grid** must.
+4. **Completion hinge** (`pen_complete`) — pays only for finishing all 30 scans, killing the
+   truncate-after-banking-coverage exploit.
+5. **Scan-1 baking detector** — on scan 1 the notepad is empty, so any trained-vs-untrained gain there would
+   be band knowledge in the weights, not memory. Measured flat (+0.0004…+0.0011 across four runs).
+
+### Conditions in the central figure
+| condition | model | memory |
 |---|---|---|
-| **A** | explicit | real (the model's own previous report) |
-| **B** *(control)* | explicit | **scrambled** — random in-band frequencies, same count/format |
-| **C, C′** | weak | real |
+| **no-mem** | scripted perfect agent through the real engine | none (upper bound) |
+| **ICL** | untrained base, full history in prompt (job `g7dncu2c`, ep0) | in-context |
+| **notepad-untrained** | untrained base with notepad tools (4 runs at ep0, pooled) | notepad |
+| **notepad-trained** | same 4 runs after RL (`s8e07n53`/`yp8deoer`/`kym4znjc`/`wqjyy66p`, ep4) | notepad |
 
-Arm B is the key control: a training effect that survives content-scrambling is *skill*, not *memory*.
+See [`../data/occ_by_scan_bin.csv`](../data/occ_by_scan_bin.csv) for every number in the figure.
 
 ---
 
