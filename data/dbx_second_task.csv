@@ -1,0 +1,28 @@
+run,condition,model,epoch,acc,one_shot,mean_eff,note
+w7guqqae,empty_notepad (baseline null),qwen3-1.7b,0,0.031,0.0,,"flat null, one_shot=0"
+w7guqqae,empty_notepad (baseline null),qwen3-1.7b,1,0.035,0.0,,"flat null, one_shot=0"
+w7guqqae,empty_notepad (baseline null),qwen3-1.7b,2,0.02,0.0,,"flat null, one_shot=0"
+w7guqqae,empty_notepad (baseline null),qwen3-1.7b,3,0.028,0.0,,"flat null, one_shot=0"
+w7guqqae,empty_notepad (baseline null),qwen3-1.7b,4,0.031,0.0,,"flat null, one_shot=0"
+xvmz0mxv,empty_notepad (baseline null),qwen3-1.7b,0,0.0264,0.0,,"flat null, one_shot=0"
+xvmz0mxv,empty_notepad (baseline null),qwen3-1.7b,1,0.0292,0.0,,"flat null, one_shot=0"
+xvmz0mxv,empty_notepad (baseline null),qwen3-1.7b,2,0.0389,0.0,,"flat null, one_shot=0"
+xvmz0mxv,empty_notepad (baseline null),qwen3-1.7b,3,0.026,0.0,,"flat null, one_shot=0"
+xvmz0mxv,empty_notepad (baseline null),qwen3-1.7b,4,0.0187,0.0,,"flat null, one_shot=0"
+qmi03m6j,empty_notepad (baseline null),qwen3-1.7b,0,0.0323,0.0,,"flat null, one_shot=0"
+qmi03m6j,empty_notepad (baseline null),qwen3-1.7b,1,0.0295,0.0,,"flat null, one_shot=0"
+qmi03m6j,empty_notepad (baseline null),qwen3-1.7b,2,0.0267,0.0,,"flat null, one_shot=0"
+qmi03m6j,empty_notepad (baseline null),qwen3-1.7b,3,0.0229,0.0,,"flat null, one_shot=0"
+qmi03m6j,empty_notepad (baseline null),qwen3-1.7b,4,0.0271,0.0,,"flat null, one_shot=0"
+xmen1ghu,empty_notepad (baseline null),qwen3-1.7b,0,0.0326,0.0,,"flat null, one_shot=0"
+xmen1ghu,empty_notepad (baseline null),qwen3-1.7b,1,0.0392,0.0,,"flat null, one_shot=0"
+xmen1ghu,empty_notepad (baseline null),qwen3-1.7b,2,0.0264,0.0,,"flat null, one_shot=0"
+xmen1ghu,empty_notepad (baseline null),qwen3-1.7b,3,0.0274,0.0,,"flat null, one_shot=0"
+xmen1ghu,empty_notepad (baseline null),qwen3-1.7b,4,0.0292,0.0,,"flat null, one_shot=0"
+v7uu671a,oracle_facts_preseeded,qwen3-1.7b,0,0.0566,0.0324,0.0363,single lever: notepad pre-seeded with correct schema
+v7uu671a,oracle_facts_preseeded,qwen3-1.7b,1,0.0431,0.0279,0.031,single lever: notepad pre-seeded with correct schema
+v7uu671a,oracle_facts_preseeded,qwen3-1.7b,2,0.0406,0.0216,0.0256,single lever: notepad pre-seeded with correct schema
+v7uu671a,oracle_facts_preseeded,qwen3-1.7b,3,0.0347,0.0156,0.0198,single lever: notepad pre-seeded with correct schema
+v7uu671a,oracle_facts_preseeded,qwen3-1.7b,4,0.0382,0.0179,0.0219,single lever: notepad pre-seeded with correct schema
+(sufficiency smoke),oracle_facts_preseeded,gpt-oss-120b,,0.93,,,"same facts, competent model - run 1 of 2"
+(sufficiency smoke),oracle_facts_preseeded,gpt-oss-120b,,0.67,,,"same facts, competent model - run 2 of 2"

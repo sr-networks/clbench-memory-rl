@@ -1,0 +1,16 @@
+# Secrets / env — never commit
+.env
+.env.*
+*.key
+*_api_key*
+*secret*
+.zshrc
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
