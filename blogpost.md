@@ -166,12 +166,16 @@ All four guards read ≈0 on honest play at epoch 0 in every run, so on honest r
 
 ## Is it repeatable?
 
-The green bars are **four independent RL runs pooled** (Fireworks RFT jobs `s8e07n53`, `yp8deoer`,
+The green bars are **four independent RL runs pooled** (training jobs `s8e07n53`, `yp8deoer`,
 `kym4znjc`, `wqjyy66p` — identical config, differing only in seed), and the whisker on each is the min–max
 across those four runs. Direction of the effect replicated **4 of 4**: complete-episode recallable-coverage
 rose in every run (+0.041 / +0.101 / +0.181 / +0.182), and scan-1 stayed flat in every run. The *magnitude*
 varies run to run — which is exactly what the whisker shows, and why we pool rather than cherry-pick one
 seed.
+
+And these four are not survivors picked from a pile after the fact: the complete run history of this
+project — **all 43 training jobs**, including every failed arm, the cancelled run, the confounded run, and
+a replication that did not reproduce — is in [`REGISTRY.md`](REGISTRY.md).
 
 ---
 
@@ -187,8 +191,8 @@ seed.
   early occ stayed negative every epoch — it never learned to accumulate. Training doesn't fix the collapse.
 - **This is our re-implementation, not CLBench's exact harness.** The point is the *mechanism* (ICL rots on
   long episodes; a trained notepad doesn't) and the *trainability*, not a leaderboard number against CLBench.
-- **One model, one optimizer.** Qwen3-1.7B, GRPO via Fireworks RFT; learning rate / temperature / group size
-  not swept. `memory_gain` (a late−early delta) is measured but never rewarded — rewarding a delta invites
+- **One model, one optimizer.** Qwen3-1.7B, GRPO (LoRA adapters) on a managed RL fine-tuning service;
+  learning rate / temperature / group size not swept. `memory_gain` (a late−early delta) is measured but never rewarded — rewarding a delta invites
   sandbagging.
 
 ---
@@ -211,8 +215,10 @@ Four replicate GRPO runs are a flat null (accuracy ~3%, informed-one-shot ≡ 0)
 pre-seed the notepad with the **correct** schema, removing discovery entirely — lifts accuracy only to
 **0.057** at epoch 0, then it decays under RL. Handed the answer schema outright, the 1.7B still gets 94% of
 answers wrong: it can't reliably execute aggregate-SQL-with-unit-conversion even when told exactly what to
-do. That the facts *are* answerable is not in doubt — the same pre-seeded notepad given to gpt-oss-120b
-scores **0.67–0.93**. The verdict: a **discovery gap and an execution gap beneath it.** This task needs a
+do. That the facts *are* answerable is not in doubt — the same pre-seeded notepad given to a large open
+model (gpt-oss-120b), through the identical evaluator path, scores **0.93 and 0.67** (a two-row spot check:
+14/15 and 10/15 questions — a sanity check, not a benchmark). The verdict: a **discovery gap and an
+execution gap beneath it.** This task needs a
 bigger base model. Hiding it would misrepresent what "RL trains memory" is worth at 1.7B.
 
 ---
@@ -232,7 +238,13 @@ bigger base model. Hiding it would misrepresent what "RL trains memory" is worth
 
 ---
 
-*Data behind the central figure: [`data/occ_by_scan_bin.csv`](data/occ_by_scan_bin.csv). Second-task data:
-[`data/dbx_second_task.csv`](data/dbx_second_task.csv). Task details and the exact reward:
-[`task/task_description.md`](task/task_description.md). Runs are Fireworks RFT job IDs (`s8e07n53`,
-`yp8deoer`, `kym4znjc`, `wqjyy66p`, `g7dncu2c`, `v7uu671a` …), cited so each number traces to its source job.*
+*Every number here is recomputable from raw data: the per-episode, per-scan traces of all four conditions
+are in [`data/raw_occ_traces.csv`](data/raw_occ_traces.csv) (54,420 rows), and
+[`code/make_figure.py`](code/make_figure.py) rebuilds the central figure and the bin table — including
+episode-bootstrap 95% CIs — from that file alone. The executed reward code, verbatim, is
+[`code/spectrum_reward.py`](code/spectrum_reward.py); the scripted no-memory agent is
+[`code/memoryless_agent.py`](code/memoryless_agent.py). Second-task data:
+[`data/dbx_second_task.csv`](data/dbx_second_task.csv). Task details:
+[`task/task_description.md`](task/task_description.md). The complete run history:
+[`REGISTRY.md`](REGISTRY.md). Runs are cited by training-job ID throughout, so each number traces to its
+source job.*

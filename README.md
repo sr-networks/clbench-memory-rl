@@ -21,8 +21,10 @@ identical trained vs. untrained).
 |---|---|
 | **[blogpost.md](blogpost.md)** | The full write-up, with the central figure and the honesty caveats. |
 | **[paper/paper.pdf](paper/paper.pdf)** | The same result as a short scientific paper (LaTeX source in [`paper/`](paper/)). |
+| **[REGISTRY.md](REGISTRY.md)** | **Every training run this project bought — all 43, including every failure** — so the survivorship is auditable. |
 | **[task/task_description.md](task/task_description.md)** | The CLBench-derived tasks — real prompts, the memory-only reward, and the anti-cheating design. |
-| **[data/](data/)** | The underlying numbers as CSV. See the [data dictionary](data/README.md). |
+| **[data/](data/)** | The numbers as CSV, **including the raw per-episode/per-scan traces** behind the figure. See the [data dictionary](data/README.md). |
+| **[code/](code/)** | The executed reward code (verbatim), the scripted no-memory agent, and a script that regenerates the figure from the raw traces. |
 | **[assets/](assets/)** | The figures. |
 
 ## The four conditions in the figure
@@ -36,8 +38,8 @@ identical trained vs. untrained).
 
 `no-mem` is not a strawman — it's the *upper bound* for any memoryless agent. ICL vs. notepad-untrained is a
 pure memory-*mode* comparison (same weights); notepad-untrained vs. notepad-trained isolates the *training*
-effect. Runs: Qwen3-1.7B on Fireworks RFT (GRPO, LoRA). Notepad bars pool four replicate runs (`s8e07n53`,
-`yp8deoer`, `kym4znjc`, `wqjyy66p`); ICL is job `g7dncu2c` (ep0).
+effect. Runs: Qwen3-1.7B, GRPO with LoRA adapters on a managed RL fine-tuning service. Notepad bars pool
+four replicate runs (`s8e07n53`, `yp8deoer`, `kym4znjc`, `wqjyy66p`); ICL is job `g7dncu2c` (ep0).
 
 ## Why it's memory, not task skill
 
@@ -61,11 +63,21 @@ against blanket-report and weight-baking cheats round out the design (see the bl
 
 ## Reproduce
 
-Every number in the central figure is in [`data/occ_by_scan_bin.csv`](data/occ_by_scan_bin.csv) (occ-IoU
-pooled by scan-position bin for all four conditions, with per-run min/max and sample sizes). Second-task
-numbers are in [`data/dbx_second_task.csv`](data/dbx_second_task.csv). The training harness itself (dataset
-builders, evaluators, reward functions) is not vendored here — this repo is the **results + methodology**
-write-up.
+The central figure is **recomputable from raw data in this repo**:
+
+```
+python3 code/make_figure.py     # matplotlib/numpy only
+```
+
+reads the raw per-episode, per-scan traces ([`data/raw_occ_traces.csv`](data/raw_occ_traces.csv), 54,420
+rows — every scan of every episode of all four conditions) and regenerates
+[`data/occ_by_scan_bin.csv`](data/occ_by_scan_bin.csv) (bin means, per-run min/max, episode-bootstrap 95%
+CIs) and the figure PNG. Nothing in the figure is hand-entered. The reward code the training jobs executed
+is vendored verbatim in [`code/spectrum_reward.py`](code/spectrum_reward.py) (with a standalone
+self-check), and the scripted no-memory agent in [`code/memoryless_agent.py`](code/memoryless_agent.py).
+Second-task numbers are in [`data/dbx_second_task.csv`](data/dbx_second_task.csv). The task engine and
+training-harness glue are CLBench-derived and not redistributed — what *is* here is everything a rigged
+experiment would have to hide: the scoring, the raw traces, and the [complete run history](REGISTRY.md).
 
 ## Attribution & license
 

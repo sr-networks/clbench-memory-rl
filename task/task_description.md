@@ -1,7 +1,7 @@
 # Task descriptions
 
-Both tasks are **derived from** the Continual-Learning Bench (CLBench) and adapted into RL environments for
-Fireworks RFT (GRPO). Below are the real prompts, the memory design, the scoring, and the anti-cheating
+Both tasks are **derived from** the Continual-Learning Bench (CLBench) and adapted into RL environments
+for GRPO fine-tuning. Below are the real prompts, the memory design, the scoring, and the anti-cheating
 measures. (Benchmark canary strings from the original templates are intentionally omitted.)
 
 ---
@@ -59,8 +59,9 @@ The model reports **every** region it believes is occupied — including transmi
 scans that produced no peak this time — using only what it kept in the notepad.
 
 ### The reward — paid only for memory
-RL uses one number per episode, computed from the per-scan tool-result metrics (source of truth:
-`spectrum_reward.py · compute_spectrum_dormant_completion_reward`):
+RL uses one number per episode, computed from the per-scan tool-result metrics (the executed code is
+vendored verbatim in [`../code/spectrum_reward.py`](../code/spectrum_reward.py) —
+`compute_spectrum_dormant_completion_reward`):
 
 ```
 Score = 3 × ( mean_dorm − pen_anchor − pen_carpet − pen_wmax − pen_complete )

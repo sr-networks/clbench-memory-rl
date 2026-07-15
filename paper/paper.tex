@@ -212,8 +212,8 @@ therefore measured for every run as a no-memory discriminator; the result
 \label{sec:setup}
 
 \paragraph{Training.}
-Base model Qwen3-1.7B~\cite{qwen3}; GRPO~\cite{grpo} with LoRA adapters via
-Fireworks Reinforcement Fine-Tuning. Four replicate runs with identical
+Base model Qwen3-1.7B~\cite{qwen3}; GRPO~\cite{grpo} with LoRA adapters on a
+managed reinforcement fine-tuning service. Four replicate runs with identical
 configuration and different seeds (job IDs \texttt{s8e07n53}, \texttt{yp8deoer},
 \texttt{kym4znjc}, \texttt{wqjyy66p}): 24 training bands, learning rate
 $2{\times}10^{-4}$, 5 epochs, 8 candidate rollouts per GRPO group, sampling
@@ -259,7 +259,12 @@ accuracy to ${\approx}0.61$.}
 \centering
 \caption{Occupied-IoU by scan-position bin (higher is better). Notepad columns pool
 four replicate runs; the bracketed range is the min--max of the four per-run means
-at ep4. $n$ is the number of trained-condition scan observations pooled per bin.}
+at ep4. $n$ is the number of trained-condition scan observations pooled per bin.
+Episode-level bootstrap 95\% confidence intervals of the pooled bin means (2000
+resamples of whole episodes) are no wider than $\pm 0.011$ for the notepad
+conditions and $\pm 0.022$ for any condition; beyond the first bin the four
+conditions' intervals are pairwise non-overlapping. Full CIs ship with the data
+(Data availability).}
 \label{tab:main}
 \small
 \begin{tabular}{@{}lccccc@{}}
@@ -332,7 +337,11 @@ but does not remove the asymmetry. \emph{Scale and scope.} One base model
 and group size were not swept. \emph{Benchmark relation.} This is a
 re-implementation of the CLBench task family as an RL environment, not the
 benchmark's exact harness; the contribution is the mechanism and its
-trainability, not a leaderboard number.
+trainability, not a leaderboard number. \emph{Run selection.} The four reported
+runs are the terminal configuration of a longer design sequence, not survivors
+selected from it: a registry of every training job bought for this project (43,
+including all failed reward designs and a failed replication of an earlier
+configuration) is published with the data.
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -347,11 +356,15 @@ provably unchanged. For small models acting over long horizons, the practical
 implication is direct: do not hoard history---train the model to write things down.
 
 \subsection*{Data availability}
-All numbers in Table~\ref{tab:main} and Figure~\ref{fig:main}, the task
-description with the exact reward, and the full write-up are available at
-\url{https://github.com/sr-networks/clbench-memory-rl}. Training runs are
-identified by their Fireworks RFT job IDs throughout, so each number is traceable
-to its source job.
+All numbers in Table~\ref{tab:main} and Figure~\ref{fig:main} are recomputable
+from raw data. The repository at
+\url{https://github.com/sr-networks/clbench-memory-rl} contains the raw
+per-episode, per-scan traces of all four conditions (54{,}420 rows), a script
+that regenerates the figure and the binned table---including the bootstrap
+confidence intervals---from those traces alone, the executed reward code
+verbatim, the scripted no-memory agent, the task description, and the complete
+run registry. Training runs are identified by their training-job IDs throughout,
+so each number is traceable to its source job.
 
 \begin{thebibliography}{9}
 
