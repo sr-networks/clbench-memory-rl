@@ -29,7 +29,8 @@ External Notepad Better than Its Own Context Window}
 \maketitle
 
 \begin{abstract}
-Agentic benchmarks of continual learning have reported a puzzling result: giving a
+Agentic benchmarks of continual learning have reported a puzzling
+result~\cite{clbench}: giving a
 language model an external \emph{notepad} for carrying information across steps does
 not reach the accuracy of plain in-context learning (ICL), in which the entire
 interaction history simply remains in the prompt. We ask whether this deficit is a
@@ -63,7 +64,8 @@ surviving from one step to the next.
 
 A priori, the notepad appears preferable: it is a compressed, curated summary under
 the agent's control, it keeps the prompt short, and it does not bury salient facts
-under many turns of transcript. Yet the Continual-Learning Bench (CLBench), from
+under many turns of transcript. Yet the Continual Learning Bench
+(CLBench)~\cite{clbench}, from
 which our task is derived, reported the opposite ordering: notepad-equipped agents
 did not reach the accuracy of full-history ICL. This is consistent with a simple
 hypothesis that has, to our knowledge, not been isolated experimentally: pretrained
@@ -84,7 +86,7 @@ The italicized rider is essential. An RL run that improves a memory-dependent sc
 may have (a)~memorized task content into the weights, (b)~improved single-step
 skill, or (c)~genuinely improved the carrying of information forward. Only (c) is
 ``training memory.'' Our experimental design excludes (a) and (b) by construction,
-by guard, and by measurement (Section~\ref{sec:reward}).
+by penalty, and by measurement (Section~\ref{sec:reward}).
 
 Our contributions are: (1)~a memory-only reward for a long-horizon monitoring task,
 red-teamed against blanket-reporting and weight-memorization exploits before
@@ -99,13 +101,27 @@ rises and holds.
 \label{sec:task}
 
 \paragraph{Blind spectrum monitoring.}
-The task is derived from CLBench's blind-spectrum-monitoring family. An agent
+The task is derived from the blind spectrum monitoring family of CLBench. An agent
 monitors one fixed radio-frequency band containing 11--14 persistent transmitter
 channels. It receives $n{=}30$ sequential scans of the same band. In any single
-scan, only ${\sim}3$ transmitters are actively emitting, and the detector is noisy
-(missed detections and false alarms). Dormant transmitters still \emph{occupy} the
-band. After each scan the agent submits a report listing every frequency region it
-believes to be persistently occupied (center frequency and bandwidth per region).
+scan, only ${\sim}3$ transmitters are actively emitting; dormant transmitters still
+\emph{occupy} the band. After each scan the agent submits a report listing every
+frequency region it believes to be persistently occupied (center frequency and
+bandwidth per region).
+
+\paragraph{Detector errors.}
+Following the benchmark's data-generating process, the scan data shown to the agent
+are deliberately unreliable. Each actively emitting transmitter is missed with
+probability $0.15$, so even an active channel may produce no peak. When a peak is
+reported, its parameters are noisy estimates: the frequency carries Gaussian error
+(1\,MHz standard deviation), the width is perturbed by about $15\%$, the power by
+5\,dBm, and the transmitter's true center itself drifts by up to $\pm 0.5$\,MHz
+between scans. Scans also contain clutter that corresponds to no persistent
+transmitter: with probability $0.2$ a spurious noise peak appears at a random
+frequency, and with probability $0.2$ a scan contains one to three narrow
+interference spikes. The agent therefore cannot simply copy single detections into
+its report; it must aggregate repeated noisy sightings into stable channel
+estimates and distinguish persistent transmitters from clutter.
 
 \paragraph{Score.}
 The per-scan score is the occupied-spectrum intersection-over-union
@@ -119,12 +135,16 @@ visible per scan, a high \occ{} requires reporting channels observed in
 \emph{earlier} scans that are currently silent---i.e., memory.
 
 \paragraph{No-memory upper bound.}
-As the memoryless reference we use a scripted agent that reports exactly the
-currently visible channels with perfect center frequencies and widths, replayed
-through the real task engine on the same bands. This is not a weak baseline but an
-\emph{upper bound} for any memoryless policy; it scores $\occ \approx 0.26$
-(per-variant floors $a_0 \in \{0.2082, 0.2141, 0.2368\}$ enter the reward in
-Section~\ref{sec:reward}).
+As the memoryless reference we use a scripted oracle agent, replayed through the
+real task engine on the same bands. On every scan it matches each visible peak
+against the hidden ground truth, identifies which true channels produced the
+current detections, and reports exactly those channels with their true center
+frequencies and widths. It thus resolves the detector noise perfectly---something
+no real agent can do, since a model must estimate centers and widths from the noisy
+peaks themselves---but it remembers nothing across scans. Its score,
+$\occ \approx 0.26$, is therefore not a weak baseline but an \emph{upper bound} for
+any memoryless policy (the per-variant floors $a_0 \in \{0.2082, 0.2141, 0.2368\}$
+enter the reward in Section~\ref{sec:reward}).
 
 \paragraph{Memory interfaces.}
 We compare two designs holding the base model fixed:
@@ -147,7 +167,7 @@ RL on a memory-dependent score invites two families of confound: improving the
 memory-free part of the task, and shortcut policies that fake coverage. The reward
 is designed so that neither pays.
 
-\paragraph{Currency.}
+\paragraph{Per-scan memory score.}
 For scans $t = 2,\dots,n$ let the \emph{recallable set} $D_t$ be the channels that
 are invisible at scan $t$ but were visible in some earlier scan. The per-scan
 memory score is a Tversky overlap ($\alpha{=}\beta{=}1$) between the report and
@@ -157,50 +177,86 @@ $D_t$:
 \frac{\mathrm{cov}(R_t, D_t)}
      {\mathrm{cov}(R_t, D_t) + \mathrm{FP}_t + \mathrm{FN}_t},
 \end{equation}
-where $\mathrm{cov}$ is the covered recallable area, $\mathrm{FN}_t$ the missed
-recallable area, and---critically---$\mathrm{FP}_t$ the reported area on spectrum
+All three quantities are spectrum areas, measured in MHz along the frequency axis
+(in the implementation the band is discretized into 0.5-MHz bins and areas are bin
+counts). Let $R_t$ denote the union of the frequency intervals the agent reports at
+scan $t$, let $D_t$ denote (by slight abuse of notation) also the union of the
+frequency intervals of the recallable channels, and let $A_t$ denote the union of
+the intervals of the channels that are visible now \emph{or} were visible in some
+earlier scan. Then $\mathrm{cov}(R_t, D_t) = \lvert R_t \cap D_t \rvert$ is the
+\emph{covered recallable area}: the part of the spectrum belonging to
+currently-dormant, previously-seen channels that the report still marks as
+occupied. $\mathrm{FN}_t = \lvert D_t \rvert - \lvert R_t \cap D_t \rvert$ is the
+recallable area the report misses, and---critically---%
+$\mathrm{FP}_t = \lvert R_t \setminus A_t \rvert$ is the reported area on spectrum
 the agent has \emph{never seen occupied}. Currently visible channels are excluded
 from both numerator and penalties: reporting what is on screen is neither rewarded
-nor punished. The currency is therefore orthogonal to single-step skill by
-construction, and it is unearnable without information crossing scan boundaries.
+nor punished. This memory score is therefore orthogonal to single-step skill by
+construction, and it cannot be earned without information crossing scan boundaries.
+
+\paragraph{Episode structure.}
+A training episode consists of the 30 scans of one band. At each scan the model
+receives only the current scan's peak list together with the current contents of
+its notepad; the transcript of all earlier scans has been wiped from the context.
+The model may rewrite the notepad and then submits its occupancy report, and
+whatever it wrote to the notepad is the only information that survives into the
+next scan. When the episode ends, the whole rollout receives a single scalar
+reward.
 
 \paragraph{Episode reward.}
-One number per episode:
+The reward combines the mean memory score with four penalties:
 \begin{equation}
 \label{eq:reward}
 S = 3\left(\overline{\mathrm{dorm}}
  - p_{\mathrm{anchor}} - p_{\mathrm{carpet}} - p_{\mathrm{wmax}}
  - p_{\mathrm{complete}}\right),
 \end{equation}
-with $\overline{\mathrm{dorm}}$ the mean of $\mathrm{SCAN\_DORM}_t$ over the scans
-actually played, and hinge penalties
-\begin{align*}
-p_{\mathrm{anchor}} &= \max(0,\, \mathrm{anchor} - a_0 - 0.10),
-&& \mathrm{anchor} = \text{mean } \occ \text{ over scans 1--2},\\
-p_{\mathrm{carpet}} &= 4.0 \cdot \max(0,\, \overline{\mathrm{rarea}} - 1.15),
-&& \mathrm{rarea} = \text{reported area} / \text{true occupied area},\\
-p_{\mathrm{wmax}} &= 1.0 \cdot \max(0,\, \overline{\mathrm{wmax}} - 1.5),
-&& \mathrm{wmax} = \text{widest reported region} / \text{widest true channel},\\
-p_{\mathrm{complete}} &= 1.5 \cdot \max(0,\, 30 - n_{\mathrm{played}} - 2)/30.
-\end{align*}
-An episode with zero completed scans (first-turn format failure) receives a flat
-$S = -0.2$.
+where $\overline{\mathrm{dorm}}$ is the mean of $\mathrm{SCAN\_DORM}_t$ over the
+scans actually played. Each penalty targets one specific way of inflating the score
+without using memory, and each is exactly zero on honest play:
+\begin{itemize}
+\item \emph{Anchor penalty.}
+$p_{\mathrm{anchor}} = \max(0,\ \mathrm{anchor} - a_0 - 0.10)$, where
+$\mathrm{anchor}$ is the mean $\occ$ over scans 1--2. On the first two scans almost
+nothing is recallable yet, so a score far above the scripted memoryless floor
+$a_0$ of that band variant cannot come from memory; any surplus beyond a margin of
+$0.10$ is subtracted.
+\item \emph{Area penalty.}
+$p_{\mathrm{carpet}} = 4.0 \cdot \max(0,\ \overline{\mathrm{rarea}} - 1.15)$, where
+$\mathrm{rarea}$ is the total reported area divided by the true occupied area of
+the band. This penalty punishes the blanket strategy of declaring large parts of
+the band occupied instead of remembering channels: it activates as soon as the
+model reports more than $115\%$ of the truly occupied area.
+\item \emph{Width penalty.}
+$p_{\mathrm{wmax}} = 1.0 \cdot \max(0,\ \overline{\mathrm{wmax}} - 1.5)$, where
+$\mathrm{wmax}$ is the width of the widest reported region divided by the width of
+the widest true channel. This penalty punishes the same blanket strategy executed
+as one single, very wide region, which would inflate the covered area faster than
+the area penalty alone can tax it.
+\item \emph{Completion penalty.}
+$p_{\mathrm{complete}} = 1.5 \cdot \max(0,\ 30 - n_{\mathrm{played}} - 2)/30$,
+where $n_{\mathrm{played}}$ is the number of scans the model completed. Because
+$\overline{\mathrm{dorm}}$ averages only over played scans, a policy could
+otherwise raise its mean by ending the episode early, right after its strongest
+scans. Completing at least 28 of the 30 scans makes this penalty exactly zero.
+\end{itemize}
+An episode with zero completed scans (a formatting failure on the first turn)
+receives a flat $S = -0.2$.
 
 \paragraph{Adversarial audit.}
-Each guard corresponds to an exploit simulated offline before training:
-blanketing the band (``everything is occupied'') is caught by $p_{\mathrm{carpet}}$;
-blanketing with one wide region under the area alarm by $p_{\mathrm{wmax}}$;
-behaving honestly on scans 1--2 to satisfy the anchor and blanketing afterwards by
-the per-scan area/width statistics; memorizing the fixed channel grid into the
-weights (``gridbake'') by the definition of $\mathrm{FP}$ against never-seen space,
-which an honest memory policy never paints; and truncating the episode after
-banking coverage by $p_{\mathrm{complete}}$. Empirically all four penalties are
-${\approx}0$ at epoch~0 in every run, so on honest play the reward is literally
-$3\,\overline{\mathrm{dorm}}$---a memory-only currency. The anchor hinge
-additionally pins near-memory-free scans to the scripted floor $a_0$, so a policy
-that improves \emph{without} memory earns nothing and can be taxed. We deliberately
-never reward the late-minus-early improvement itself, as rewarding a delta invites
-sandbagging of early scans.
+Each penalty corresponds to an exploit we simulated offline before training:
+declaring the whole band occupied is caught by the area penalty; doing the same
+with one very wide region by the width penalty; behaving honestly on scans 1--2 to
+avoid the anchor penalty and blanketing afterwards by the per-scan area and width
+statistics; and ending the episode early after a few strong scans by the completion
+penalty. A further exploit---memorizing the fixed channel grid into the
+weights---is unprofitable by the definition of the memory score itself: false
+positives are measured against spectrum the agent has never seen occupied, which an
+honest memory policy never reports but a memorized grid must. Empirically, all four
+penalties are ${\approx}0$ at epoch~0 in every run, so on honest play the reward is
+exactly $3\,\overline{\mathrm{dorm}}$, a quantity that can be earned only through
+memory. We deliberately never reward the late-minus-early improvement itself:
+rewarding an improvement delta would invite deliberately weak early scans.
 
 \paragraph{Weight-memorization detector.}
 On scan~1 the notepad is empty, so any trained-versus-untrained gain there must be
@@ -213,24 +269,25 @@ therefore measured for every run as a no-memory discriminator; the result
 
 \paragraph{Training.}
 Base model Qwen3-1.7B~\cite{qwen3}; GRPO~\cite{grpo} with LoRA adapters on a
-managed reinforcement fine-tuning service. Four replicate runs with identical
-configuration and different seeds (job IDs \texttt{s8e07n53}, \texttt{yp8deoer},
-\texttt{kym4znjc}, \texttt{wqjyy66p}): 24 training bands, learning rate
+managed reinforcement fine-tuning service. We ran four replicate runs with
+identical configuration and different seeds: 24 training bands, learning rate
 $2{\times}10^{-4}$, 5 epochs, 8 candidate rollouts per GRPO group, sampling
 temperature 1.2, and a 16{,}384-token per-turn output cap. Rewards follow
-Eq.~\eqref{eq:reward}. Per epoch and run, evaluation pools 192 rollouts; ``trained''
-denotes the final epoch (ep4), ``untrained'' the same runs at ep0.
+Eq.~\eqref{eq:reward}. Per epoch and run, evaluation uses 192 rollouts.
+``Trained'' denotes the final epoch (ep4) and ``untrained'' the same runs at
+epoch~0; ``pooled'' means that the episodes of all four replicate runs are
+aggregated and treated as one sample ($4 \times 192$ episodes per epoch).
 
 \paragraph{Conditions.}
 The central comparison aligns four conditions by scan position within the episode:
 \begin{center}
-\small
+\footnotesize
 \begin{tabular}{@{}llll@{}}
 \toprule
 condition & policy & memory & rollouts \\
 \midrule
 no-mem & scripted perfect memoryless agent & none (upper bound) & deterministic replay \\
-ICL & untrained base, full history in prompt & in-context & 288 (job \texttt{g7dncu2c}, ep0) \\
+ICL & untrained base, full history in prompt & in-context & 288 \\
 notepad-untrained & untrained base with notepad tools & notepad & $4\times192$ (ep0, pooled) \\
 notepad-trained & same four runs after RL & notepad & $4\times192$ (ep4, pooled) \\
 \bottomrule
@@ -266,7 +323,8 @@ conditions and $\pm 0.022$ for any condition; beyond the first bin the four
 conditions' intervals are pairwise non-overlapping. Full CIs ship with the data
 (Data availability).}
 \label{tab:main}
-\small
+\footnotesize
+\setlength{\tabcolsep}{4.5pt}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 scans & no-mem & ICL & notepad ep0 & notepad ep4 & $n_{\mathrm{ep4}}$ \\
@@ -310,15 +368,16 @@ by seed, which the whiskers in Figure~\ref{fig:main} report rather than hide.
 
 \paragraph{The gain is memory, not skill.}
 Scan-1 \occ{}, measured on an empty notepad, moves by $+0.0004$ to $+0.0011$
-across the four runs (pooled $0.216 \rightarrow 0.217$): the trained model is not
-better at the task when it has nothing to remember. Combined with the construction
-of the currency (visible channels carry no gradient), the anchor pin, and the
-silent guards, every improvement in Table~\ref{tab:main} is attributable to
+across the four runs; averaged over all episodes of the four runs it is $0.216$
+before training and $0.217$ after. The trained model is thus not better at the
+task when it has nothing to remember. Combined with the construction of the
+memory score (visible channels carry no reward), the anchor penalty, and the
+remaining penalties, every improvement in Table~\ref{tab:main} is attributable to
 carrying information forward.
 
 \paragraph{Training ICL does not fix the collapse.}
 For completeness we also trained an ICL arm under a dense per-scan accuracy reward
-(job \texttt{g7dncu2c}, 4096-token cap). It learned to degrade somewhat less over
+(4096-token per-turn cap). It learned to degrade somewhat less over
 the long context (mean \occ{} $0.344 \rightarrow 0.363$), but its late-minus-early
 \occ{} remained negative in every epoch: it never learned to accumulate. The
 degradation of in-context memory over long horizons appears to be the binding
@@ -337,23 +396,41 @@ but does not remove the asymmetry. \emph{Scale and scope.} One base model
 and group size were not swept. \emph{Benchmark relation.} This is a
 re-implementation of the CLBench task family as an RL environment, not the
 benchmark's exact harness; the contribution is the mechanism and its
-trainability, not a leaderboard number. \emph{Run selection.} The four reported
-runs are the terminal configuration of a longer design sequence, not survivors
-selected from it: a registry of every training job bought for this project (43,
-including all failed reward designs and a failed replication of an earlier
-configuration) is published with the data.
+trainability, not a leaderboard number.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-On a long-horizon continual-monitoring task, the reported accuracy advantage of
-in-context history over an external notepad is a short-horizon phenomenon. As the
-transcript grows, ICL degrades toward the no-memory bound, while a notepad-equipped
-agent---even untrained---holds its accuracy, and reinforcement learning under a
-memory-only, adversarially audited reward widens the gap to $+0.31$ \occ-IoU in the
-late episode, replicated in direction across four seeds, with first-step accuracy
-provably unchanged. For small models acting over long horizons, the practical
-implication is direct: do not hoard history---train the model to write things down.
+This study set out to explain a counterintuitive benchmark finding: language-model
+agents given an external notepad performed worse than agents that simply kept
+their entire history in the prompt. Our results indicate that this ordering is a
+property of short horizons and untrained policies, not of the notepad interface
+itself.
+
+Over a thirty-scan monitoring episode, keeping the full history in the prompt is
+the best strategy only at the beginning. As the transcript grows, the model
+becomes progressively worse at using the information buried inside it, and by the
+end of the episode its accuracy is barely above that of an agent with no memory at
+all. The external notepad---a short summary that the agent itself maintains, and
+that appears at a fixed place in an otherwise short prompt---does not suffer from
+this degradation. Even without any training, the same base model scores higher
+with the notepad than with its full history from the sixth scan onward.
+
+Reinforcement learning then makes the notepad policy substantially better.
+Trained under a reward that pays only for recalling channels that are currently
+invisible, and that was audited in advance against blanket-reporting,
+weight-memorization, and early-termination exploits, the model raises its
+late-episode accuracy from 0.45 to 0.61, and the direction of this improvement
+replicates in all four independent runs. Crucially, its accuracy on the first
+scan---where the notepad is still empty and memory cannot help---does not change.
+The model did not become better at the monitoring task; it became better at
+writing down what it would later need and reading it back.
+
+For small models acting over long horizons, the practical implication is direct:
+rather than accumulating an ever longer history in the prompt, train the model to
+maintain an external memory. How far this recipe extends---to larger base models,
+to other optimizers, and to task families whose memory content is harder to
+discover and to apply---is the natural next question.
 
 \subsection*{Data availability}
 All numbers in Table~\ref{tab:main} and Figure~\ref{fig:main} are recomputable
@@ -363,10 +440,17 @@ per-episode, per-scan traces of all four conditions (54{,}420 rows), a script
 that regenerates the figure and the binned table---including the bootstrap
 confidence intervals---from those traces alone, the executed reward code
 verbatim, the scripted no-memory agent, the task description, and the complete
-run registry. Training runs are identified by their training-job IDs throughout,
-so each number is traceable to its source job.
+run registry. In the repository, runs are identified by opaque training-job IDs,
+so each published number is traceable to its source run.
 
 \begin{thebibliography}{9}
+
+\bibitem{clbench}
+P.~Asawa, C.~M. Glaze, G.~Orlanski, R.~Ramakrishnan, B.~Xu, A.~Biswal,
+V.~S. Chen, F.~Sala, M.~Zaharia, and J.~E. Gonzalez.
+\newblock Continual Learning Bench: Evaluating frontier AI systems in
+real-world stateful environments.
+\newblock \emph{arXiv preprint arXiv:2606.05661}, 2026.
 
 \bibitem{lostinthemiddle}
 N.~F. Liu, K.~Lin, J.~Hewitt, A.~Paranjape, M.~Bevilacqua, F.~Petroni, and
