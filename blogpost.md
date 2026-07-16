@@ -28,12 +28,15 @@ So the question of this write-up:
 
 The whole answer is in one figure:
 
-![occ-IoU by scan position: no-mem, ICL, notepad-untrained, notepad-trained](assets/occ_by_scan_bin.png)
+![occ-IoU by scan position: no-mem, ICL, notepad-untrained, notepad-trained, perfect-mem](assets/occ_by_scan_bin.png)
 
 > Over a 30-scan episode, **ICL leads only at the very start.** It peaks around scans 6–10, then **collapses
-> as the history grows** — by scans 26–30 it is barely above the no-memory bound. The **untrained** notepad
+> as the history grows** — by scans 26–30 it is barely above the no-memory floor. The **untrained** notepad
 > already beats ICL from scan 6 on; **RL-trained**, it climbs to ~0.61 and holds. And it does this *without*
 > getting better at the task: on scan 1, where the notepad is empty, trained and untrained score identically.
+> The dark bars are the **perfect-memory ceiling** — a scripted agent with total recall, which climbs to
+> ~0.99 as the episode uncovers the band. The trained notepad captures about **half** of the achievable
+> memory headroom; ICL, by the late half, captures almost none of it.
 
 ---
 
@@ -50,7 +53,11 @@ regions you report and the true set of persistent transmitters, 0 to 1.
 
 A scripted agent with **no memory** — one that reports exactly what it currently sees, with perfect widths —
 scores occ ≈ **0.26**. That is not a weak strawman; it is the *upper bound* for any memoryless agent, and it
-is the grey bar in the figure. Everything above it is the value of memory.
+is the light-grey bar in the figure. Everything above it is the value of memory. The dark-grey bar is the
+same scripted agent with **perfect memory** — it reports every channel it has *ever* seen. It too starts low
+(≈0.60 over scans 1–5: early on, nobody can know the channels that haven't appeared yet), then climbs to
+≈0.99 as the episode uncovers the band. The two grey bars bracket what memory can possibly be worth at each
+scan position.
 
 ### The two ways to remember
 
@@ -65,14 +72,15 @@ is the grey bar in the figure. Everything above it is the value of memory.
 
 ---
 
-## The four conditions in the figure
+## The five conditions in the figure
 
 | condition | what it is | memory |
 |---|---|---|
-| **no-mem** | scripted perfect agent, reports only what it currently sees, run through the real engine | none (upper bound) |
+| **no-mem** | scripted perfect agent, reports only what it currently sees, run through the real engine | none (floor) |
 | **ICL** | untrained base model, full scan history in the prompt, no notepad | in-context |
 | **notepad-untrained** | the *same* untrained base model, but with the notepad tools + windowed context | notepad |
 | **notepad-trained** | that model after RL on a memory-only reward | notepad |
+| **perfect-mem** | the same scripted agent with total recall of every channel ever seen | perfect (ceiling) |
 
 Two comparisons live in this one chart. **ICL vs. notepad-untrained** is a pure *memory-mode* comparison —
 same base model, same weights, only the way it remembers differs. **notepad-untrained vs. notepad-trained**
@@ -80,14 +88,14 @@ is the pure *training* effect. Keeping them separate is what lets us say what RL
 
 The exact numbers (occ-IoU, pooled by scan position):
 
-| scans | no-mem | ICL | notepad-untrained | notepad-trained |
-|---|---|---|---|---|
-| 1–5 | 0.257 | **0.348** | 0.332 | 0.394 |
-| 6–10 | 0.264 | 0.378 | 0.436 | **0.559** |
-| 11–15 | 0.268 | 0.371 | 0.431 | **0.581** |
-| 16–20 | 0.270 | 0.308 | 0.455 | **0.595** |
-| 21–25 | 0.268 | 0.294 | 0.454 | **0.615** |
-| 26–30 | 0.266 | 0.286 | 0.453 | **0.612** |
+| scans | no-mem | ICL | notepad-untrained | notepad-trained | perfect-mem |
+|---|---|---|---|---|---|
+| 1–5 | 0.257 | **0.348** | 0.332 | 0.394 | 0.603 |
+| 6–10 | 0.264 | 0.378 | 0.436 | **0.559** | 0.895 |
+| 11–15 | 0.268 | 0.371 | 0.431 | **0.581** | 0.950 |
+| 16–20 | 0.270 | 0.308 | 0.455 | **0.595** | 0.968 |
+| 21–25 | 0.268 | 0.294 | 0.454 | **0.615** | 0.980 |
+| 26–30 | 0.266 | 0.286 | 0.453 | **0.612** | 0.991 |
 
 ---
 
@@ -97,8 +105,13 @@ The exact numbers (occ-IoU, pooled by scan position):
 notepad's 0.332), peaks at scans 6–10 (0.378), and then *falls* — 0.371, 0.308, 0.294, 0.286 — even though
 strictly *more* information is present each scan. This is long-context degradation on a small model: facts
 buried 20+ scans deep in a growing transcript effectively stop being used. By the end of the episode ICL
-(0.286) is barely above the no-memory bound (0.266). Pooled over the late half (scans 16–30), ICL averages
+(0.286) is barely above the no-memory floor (0.266). Pooled over the late half (scans 16–30), ICL averages
 just **0.297**.
+
+And it is degradation, **not a context cutoff**: 61% of ICL episodes complete all 30 scans, their
+transcripts average ~30k tokens at the end, and the decline is unchanged when restricted to complete
+episodes — even to the subset whose *entire* final transcript stayed under 30k tokens (0.344 → 0.258,
+ending *at* the no-memory floor). The information is in the window; the model just stops using it.
 
 **The untrained notepad already beats ICL — from scan 6 on.** Same model, no training. A ~13-line summary
 pinned at the bottom of the prompt doesn't rot the way a 30-scan transcript does, so notepad-untrained holds
@@ -109,6 +122,11 @@ drown the signal in raw history.
 **Training lifts the notepad further — to a clear win.** RL takes late-half occ from ~0.454 (untrained) to
 **0.607** (trained), roughly doubling the margin over the no-memory floor and beating ICL by +0.31 late. The
 model learns to accumulate more completely and forget less.
+
+**How far is that from perfect?** The perfect-memory ceiling averages ~0.98 over the late half, so the
+achievable memory headroom there — floor to ceiling — is about 0.71 occ. The trained notepad captures ~48%
+of it, the untrained notepad ~26%, and ICL just ~4%. Plenty of room remains, but the ordering is the point:
+training moved a 1.7B model from a quarter of the possible memory value to half of it.
 
 So the answer to the question is **yes**: a trained notepad beats free in-context history everywhere past the
 first few scans — and even an untrained one does, once the history gets long.
@@ -186,9 +204,12 @@ a replication that did not reproduce — is in [`REGISTRY.md`](REGISTRY.md).
   actually played, so they carry a survivorship bias: the pooled sample size falls from 3840 (scans 1–5) to
   3171 (scans 26–30). The effect is disclosed, not removed; it is far smaller than in an earlier 8k-token
   cohort where 3 of 4 runs truncated.
-- **The ICL bar is the untrained base**, in full-history mode, with a 4096-token cap (job `g7dncu2c`, ep0).
-  We also *trained* an ICL arm: it learned to *degrade a little less* over a long context, but late-minus-
-  early occ stayed negative every epoch — it never learned to accumulate. Training doesn't fix the collapse.
+- **The ICL bar is the untrained base**, in full-history mode, with a 4096-token cap per turn (job
+  `g7dncu2c`, ep0). We also *trained* an ICL arm: it learned to *degrade a little less* over a long context,
+  but late-minus-early occ stayed negative every epoch — it never learned to accumulate. Training doesn't
+  fix the collapse. 61% of the ICL episodes complete all 30 scans (the rest end early on the rollout
+  budget); the decline is unchanged when restricted to complete episodes, so it is not an artifact of the
+  incomplete ones — and the sub-30k-token control above rules out a context cutoff.
 - **This is our re-implementation, not CLBench's exact harness.** The point is the *mechanism* (ICL rots on
   long episodes; a trained notepad doesn't) and the *trainability*, not a leaderboard number against CLBench.
 - **One model, one optimizer.** Qwen3-1.7B, GRPO (LoRA adapters) on a managed RL fine-tuning service;
@@ -238,11 +259,11 @@ bigger base model. Hiding it would misrepresent what "RL trains memory" is worth
 
 ---
 
-*Every number here is recomputable from raw data: the per-episode, per-scan traces of all four conditions
-are in [`data/raw_occ_traces.csv`](data/raw_occ_traces.csv) (54,420 rows), and
+*Every number here is recomputable from raw data: the per-episode, per-scan traces of all five conditions
+are in [`data/raw_occ_traces.csv`](data/raw_occ_traces.csv) (55,140 rows), and
 [`code/make_figure.py`](code/make_figure.py) rebuilds the central figure and the bin table — including
 episode-bootstrap 95% CIs — from that file alone. The executed reward code, verbatim, is
-[`code/spectrum_reward.py`](code/spectrum_reward.py); the scripted no-memory agent is
+[`code/spectrum_reward.py`](code/spectrum_reward.py); the scripted no-memory and perfect-memory agents are
 [`code/memoryless_agent.py`](code/memoryless_agent.py). Second-task data:
 [`data/dbx_second_task.csv`](data/dbx_second_task.csv). Task details:
 [`task/task_description.md`](task/task_description.md). The complete run history:

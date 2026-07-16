@@ -25,9 +25,11 @@ the frequency ranges reported occupied and the true persistent transmitter set, 
   it must choose to write. On this page, "memory" always means this notepad, never the model's weights or
   its in-conversation context.
 
-The scripted **no-memory upper bound** — a perfect agent that reports exactly the currently-visible channels
-with perfect widths, run through the real task engine — scores occ ≈ **0.26**. It is the reference line no
-memoryless policy can beat.
+Two scripted agents, run through the real task engine, bracket the comparison. The **no-memory floor** — a
+perfect agent that reports exactly the currently-visible channels with perfect widths — scores occ ≈ **0.26**;
+no memoryless policy can beat it. The **perfect-memory ceiling** — the identical agent with a persistent
+seen-set, reporting every channel it has ever seen — climbs from ≈0.60 (scans 1–5; the unseen channels are
+unknowable early) to ≈**0.99** by scans 26–30. Every model condition lives between these bounds.
 
 ### System prompt (notepad arm — paraphrase)
 The notepad system prompt states the task (a series of scans of one fixed band; only some transmitters
@@ -103,10 +105,11 @@ The guards were each built to defeat a cheat we simulated offline before trainin
 ### Conditions in the central figure
 | condition | model | memory |
 |---|---|---|
-| **no-mem** | scripted perfect agent through the real engine | none (upper bound) |
+| **no-mem** | scripted perfect agent through the real engine | none (floor) |
 | **ICL** | untrained base, full history in prompt (job `g7dncu2c`, ep0) | in-context |
 | **notepad-untrained** | untrained base with notepad tools (4 runs at ep0, pooled) | notepad |
 | **notepad-trained** | same 4 runs after RL (`s8e07n53`/`yp8deoer`/`kym4znjc`/`wqjyy66p`, ep4) | notepad |
+| **perfect-mem** | same scripted agent with a persistent seen-set (total recall) | perfect (ceiling) |
 
 See [`../data/occ_by_scan_bin.csv`](../data/occ_by_scan_bin.csv) for every number in the figure.
 

@@ -27,19 +27,24 @@ identical trained vs. untrained).
 | **[code/](code/)** | The executed reward code (verbatim), the scripted no-memory agent, and a script that regenerates the figure from the raw traces. |
 | **[assets/](assets/)** | The figures. |
 
-## The four conditions in the figure
+## The five conditions in the figure
 
 | condition | what it is | memory | late-half occ (scans 16–30) |
 |---|---|---|---|
-| **no-mem** | scripted perfect agent — reports only what it currently sees, run through the real engine | none (upper bound) | ~0.27 |
+| **no-mem** | scripted perfect agent — reports only what it currently sees, run through the real engine | none (floor) | ~0.27 |
 | **ICL** | untrained base model, full scan history in the prompt, no notepad | in-context | **0.297** |
 | **notepad-untrained** | the *same* untrained model, but with the notepad tools + windowed context | notepad | 0.454 |
 | **notepad-trained** | that model after RL on a memory-only reward | notepad | **0.607** |
+| **perfect-mem** | the same scripted agent with total recall of every channel ever seen | perfect (ceiling) | ~0.98 |
 
-`no-mem` is not a strawman — it's the *upper bound* for any memoryless agent. ICL vs. notepad-untrained is a
-pure memory-*mode* comparison (same weights); notepad-untrained vs. notepad-trained isolates the *training*
-effect. Runs: Qwen3-1.7B, GRPO with LoRA adapters on a managed RL fine-tuning service. Notepad bars pool
-four replicate runs (`s8e07n53`, `yp8deoer`, `kym4znjc`, `wqjyy66p`); ICL is job `g7dncu2c` (ep0).
+`no-mem` is not a strawman — it's the *upper bound* for any memoryless agent, i.e. the floor of the memory
+comparison. `perfect-mem` is the ceiling: the identical scripted agent with a persistent seen-set. It starts
+low too (on early scans nobody can know the yet-unseen channels) and climbs to ~0.99 as the episode uncovers
+the band. Between those bounds, the trained notepad captures ~48% of the achievable memory headroom in the
+late half; ICL captures ~4%. ICL vs. notepad-untrained is a pure memory-*mode* comparison (same weights);
+notepad-untrained vs. notepad-trained isolates the *training* effect. Runs: Qwen3-1.7B, GRPO with LoRA
+adapters on a managed RL fine-tuning service. Notepad bars pool four replicate runs (`s8e07n53`,
+`yp8deoer`, `kym4znjc`, `wqjyy66p`); ICL is job `g7dncu2c` (ep0).
 
 ## Why it's memory, not task skill
 
@@ -53,8 +58,12 @@ against blanket-report and weight-baking cheats round out the design (see the bl
 
 - **Survivorship:** at the trained epoch, episode completion across the four runs is 100/97/60/90% — one run
   truncates, so the late bins average only scans actually played (pooled n falls 3840 → 3171). Disclosed.
-- **The ICL bar is the untrained base** (4096-token cap). We also trained an ICL arm; it learned to degrade
-  a little less over long context but never learned to accumulate (late−early stayed negative).
+- **The ICL bar is the untrained base** (4096-token cap per turn). We also trained an ICL arm; it learned to
+  degrade a little less over long context but never learned to accumulate (late−early stayed negative).
+- **The ICL decline is not a context-cutoff artifact.** 61% of ICL episodes complete all 30 scans, and the
+  decline is unchanged when restricted to complete episodes — including the subset whose entire final
+  transcript stayed under 30k tokens (0.344 → 0.258, ending at the no-mem floor). The model rots over its
+  own history; it doesn't run out of window.
 - **This is our re-implementation of the CLBench task family**, not CLBench's exact harness — the point is
   the mechanism and the trainability, not a leaderboard number.
 - **One model, one optimizer.** A second CLBench notepad task (`database_exploration`) is a **flat null** on
@@ -69,12 +78,13 @@ The central figure is **recomputable from raw data in this repo**:
 python3 code/make_figure.py     # matplotlib/numpy only
 ```
 
-reads the raw per-episode, per-scan traces ([`data/raw_occ_traces.csv`](data/raw_occ_traces.csv), 54,420
-rows — every scan of every episode of all four conditions) and regenerates
+reads the raw per-episode, per-scan traces ([`data/raw_occ_traces.csv`](data/raw_occ_traces.csv), 55,140
+rows — every scan of every episode of all five conditions) and regenerates
 [`data/occ_by_scan_bin.csv`](data/occ_by_scan_bin.csv) (bin means, per-run min/max, episode-bootstrap 95%
 CIs) and the figure PNG. Nothing in the figure is hand-entered. The reward code the training jobs executed
 is vendored verbatim in [`code/spectrum_reward.py`](code/spectrum_reward.py) (with a standalone
-self-check), and the scripted no-memory agent in [`code/memoryless_agent.py`](code/memoryless_agent.py).
+self-check), and the scripted no-memory and perfect-memory agents in
+[`code/memoryless_agent.py`](code/memoryless_agent.py).
 Second-task numbers are in [`data/dbx_second_task.csv`](data/dbx_second_task.csv). The task engine and
 training-harness glue are CLBench-derived and not redistributed — what *is* here is everything a rigged
 experiment would have to hide: the scoring, the raw traces, and the [complete run history](REGISTRY.md).

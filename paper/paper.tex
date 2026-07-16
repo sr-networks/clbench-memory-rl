@@ -40,7 +40,7 @@ observable radio band), we train Qwen3-1.7B with GRPO under a reward that pays
 exclusively for recalling information that is no longer observable, and that is
 orthogonal to single-step task skill by construction. We find that (i)~full-history
 ICL is strongest only in the first few steps and then degrades as the transcript
-grows, ending barely above a scripted no-memory upper bound; (ii)~the same base model
+grows, ending barely above a scripted no-memory floor; (ii)~the same base model
 equipped with a notepad already surpasses ICL from step~6 onward \emph{without any
 training}; and (iii)~reinforcement learning further lifts late-episode accuracy from
 0.45 to 0.61 occupied-IoU---replicated in direction across four independent runs---%
@@ -90,9 +90,9 @@ by penalty, and by measurement (Section~\ref{sec:reward}).
 
 Our contributions are: (1)~a memory-only reward for a long-horizon monitoring task,
 red-teamed against blanket-reporting and weight-memorization exploits before
-training; (2)~a four-condition comparison---scripted no-memory upper bound,
-full-history ICL, untrained notepad, RL-trained notepad---aligned by step position
-within the episode; and (3)~evidence that the published notepad--ICL gap reverses
+training; (2)~a five-condition comparison---scripted no-memory floor, full-history
+ICL, untrained notepad, RL-trained notepad, scripted perfect-memory
+ceiling---aligned by step position within the episode; and (3)~evidence that the published notepad--ICL gap reverses
 over long horizons: ICL degrades as the transcript grows, consistent with known
 long-context limitations~\cite{lostinthemiddle}, while the trained notepad accuracy
 rises and holds.
@@ -134,17 +134,23 @@ occupied intervals, both measured in MHz. Because only a minority of channels is
 visible per scan, a high \occ{} requires reporting channels observed in
 \emph{earlier} scans that are currently silent---i.e., memory.
 
-\paragraph{No-memory upper bound.}
-As the memoryless reference we use a scripted oracle agent, replayed through the
-real task engine on the same bands. On every scan it matches each visible peak
-against the hidden ground truth, identifies which true channels produced the
-current detections, and reports exactly those channels with their true center
-frequencies and widths. It thus resolves the detector noise perfectly---something
-no real agent can do, since a model must estimate centers and widths from the noisy
-peaks themselves---but it remembers nothing across scans. Its score,
-$\occ \approx 0.26$, is therefore not a weak baseline but an \emph{upper bound} for
+\paragraph{Scripted bounds: no-memory floor and perfect-memory ceiling.}
+Two scripted oracle agents, replayed through the real task engine on the same
+bands, bracket the comparison. The \emph{no-memory} agent, on every scan, matches
+each visible peak against the hidden ground truth, identifies which true channels
+produced the current detections, and reports exactly those channels with their true
+center frequencies and widths. It thus resolves the detector noise
+perfectly---something no real agent can do, since a model must estimate centers and
+widths from the noisy peaks themselves---but it remembers nothing across scans. Its
+score, $\occ \approx 0.26$, is therefore not a weak baseline but an upper bound for
 any memoryless policy (the per-variant floors $a_0 \in \{0.2082, 0.2141, 0.2368\}$
-enter the reward in Section~\ref{sec:reward}).
+enter the reward in Section~\ref{sec:reward}). The \emph{perfect-memory} agent is
+identical except that its set of identified channels persists across the whole
+episode: it reports every channel it has ever seen. This is the ceiling of the
+comparison---total recall combined with perfect perception. It is necessarily low
+early (channels that have not yet appeared cannot be known to any agent: $0.60$
+over scans 1--5) and approaches $\occ \approx 0.99$ by the final scans as the
+episode uncovers the band. Every model condition lives between these two bounds.
 
 \paragraph{Memory interfaces.}
 We compare two designs holding the base model fixed:
@@ -279,17 +285,18 @@ epoch~0; ``pooled'' means that the episodes of all four replicate runs are
 aggregated and treated as one sample ($4 \times 192$ episodes per epoch).
 
 \paragraph{Conditions.}
-The central comparison aligns four conditions by scan position within the episode:
+The central comparison aligns five conditions by scan position within the episode:
 \begin{center}
 \footnotesize
 \begin{tabular}{@{}llll@{}}
 \toprule
 condition & policy & memory & rollouts \\
 \midrule
-no-mem & scripted perfect memoryless agent & none (upper bound) & deterministic replay \\
+no-mem & scripted perfect memoryless agent & none (floor) & deterministic replay \\
 ICL & untrained base, full history in prompt & in-context & 288 \\
 notepad-untrained & untrained base with notepad tools & notepad & $4\times192$ (ep0, pooled) \\
 notepad-trained & same four runs after RL & notepad & $4\times192$ (ep4, pooled) \\
+perfect-mem & same scripted agent with total recall & perfect (ceiling) & deterministic replay \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -303,38 +310,41 @@ Scores are pooled into six bins of five consecutive scans.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{occ_by_scan_bin.png}
-\caption{Occupied-IoU by scan position within the 30-scan episode, for the four
+\caption{Occupied-IoU by scan position within the 30-scan episode, for the five
 conditions. Full-history ICL (purple) peaks at scans 6--10 and then degrades as the
-transcript grows, ending barely above the scripted no-memory upper bound (grey).
+transcript grows, ending barely above the scripted no-memory floor (light grey).
 The untrained notepad (light blue) surpasses ICL from scan~6 onward; RL
 (green; whiskers give the min--max of the four replicate runs) lifts late-episode
-accuracy to ${\approx}0.61$.}
+accuracy to ${\approx}0.61$. The scripted perfect-memory ceiling (dark grey)
+rises from 0.60 to 0.99 as the episode uncovers the band.}
 \label{fig:main}
 \end{figure}
 
 \begin{table}[t]
 \centering
-\caption{Occupied-IoU by scan-position bin (higher is better). Notepad columns pool
-four replicate runs; the bracketed range is the min--max of the four per-run means
-at ep4. $n$ is the number of trained-condition scan observations pooled per bin.
-Episode-level bootstrap 95\% confidence intervals of the pooled bin means (2000
-resamples of whole episodes) are no wider than $\pm 0.011$ for the notepad
-conditions and $\pm 0.022$ for any condition; beyond the first bin the four
+\caption{Occupied-IoU by scan-position bin (higher is better; bold marks the best
+model condition). Notepad columns pool four replicate runs; the bracketed range is
+the min--max of the four per-run means at ep4. The perfect-mem column is the
+scripted total-recall ceiling. $n$ is the number of trained-condition scan
+observations pooled per bin. Episode-level bootstrap 95\% confidence intervals of
+the pooled bin means (2000 resamples of whole episodes) are no wider than
+$\pm 0.011$ for the notepad conditions and $\pm 0.022$ for any model condition
+($\pm 0.046$ for the 24-episode scripted ceiling); beyond the first bin the five
 conditions' intervals are pairwise non-overlapping. Full CIs ship with the data
 (Data availability).}
 \label{tab:main}
 \footnotesize
-\setlength{\tabcolsep}{4.5pt}
-\begin{tabular}{@{}lccccc@{}}
+\setlength{\tabcolsep}{4.0pt}
+\begin{tabular}{@{}lcccccc@{}}
 \toprule
-scans & no-mem & ICL & notepad ep0 & notepad ep4 & $n_{\mathrm{ep4}}$ \\
+scans & no-mem & ICL & notepad ep0 & notepad ep4 & perfect-mem & $n_{\mathrm{ep4}}$ \\
 \midrule
-1--5   & 0.257 & \textbf{0.348} & 0.332 & 0.394 \,[0.301--0.478] & 3840 \\
-6--10  & 0.264 & 0.378 & 0.436 & \textbf{0.559} \,[0.421--0.656] & 3840 \\
-11--15 & 0.268 & 0.371 & 0.431 & \textbf{0.581} \,[0.463--0.666] & 3825 \\
-16--20 & 0.270 & 0.308 & 0.455 & \textbf{0.595} \,[0.501--0.662] & 3808 \\
-21--25 & 0.268 & 0.294 & 0.454 & \textbf{0.615} \,[0.540--0.679] & 3737 \\
-26--30 & 0.266 & 0.286 & 0.453 & \textbf{0.612} \,[0.553--0.678] & 3171 \\
+1--5   & 0.257 & \textbf{0.348} & 0.332 & 0.394 \,[0.301--0.478] & 0.603 & 3840 \\
+6--10  & 0.264 & 0.378 & 0.436 & \textbf{0.559} \,[0.421--0.656] & 0.895 & 3840 \\
+11--15 & 0.268 & 0.371 & 0.431 & \textbf{0.581} \,[0.463--0.666] & 0.950 & 3825 \\
+16--20 & 0.270 & 0.308 & 0.455 & \textbf{0.595} \,[0.501--0.662] & 0.968 & 3808 \\
+21--25 & 0.268 & 0.294 & 0.454 & \textbf{0.615} \,[0.540--0.679] & 0.980 & 3737 \\
+26--30 & 0.266 & 0.286 & 0.453 & \textbf{0.612} \,[0.553--0.678] & 0.991 & 3171 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -345,11 +355,17 @@ Figure~\ref{fig:main} and Table~\ref{tab:main} contain the main result.
 Full-history ICL leads only in the first bin (0.348 vs.\ 0.332 for the untrained
 notepad), peaks at scans 6--10 (0.378), and then falls monotonically---0.371,
 0.308, 0.294, 0.286---although strictly more information is present at every
-scan. By the final bin it is barely above the no-memory bound (0.266), and its
+scan. By the final bin it is barely above the no-memory floor (0.266), and its
 late-half mean (scans 16--30) is 0.297. This is the long-context failure mode
 at small scale: facts buried twenty-plus scans deep in a growing transcript
 effectively stop being used, consistent with positional-use limitations of long
-contexts~\cite{lostinthemiddle}.
+contexts~\cite{lostinthemiddle}. The decline is not a context-window artifact:
+61\% of ICL episodes complete all 30 scans (final transcripts average
+${\approx}30$k tokens), the decline is unchanged when the analysis is restricted
+to complete episodes, and it persists in the subset of complete episodes whose
+entire transcript remained under 30k tokens ($0.344 \rightarrow 0.258$ from the
+first bin to the last, ending at the no-memory floor). The information is present
+in the window throughout; the model stops using it.
 
 \paragraph{The untrained notepad already beats ICL beyond scan 5.}
 With identical weights, windowing the context and providing the notepad yields
@@ -365,6 +381,10 @@ over ICL and roughly a doubling of the headroom above the no-memory floor. The
 direction of the effect replicated in four of four runs (complete-episode mean
 recallable-coverage $+0.041$, $+0.101$, $+0.181$, $+0.182$); the magnitude varies
 by seed, which the whiskers in Figure~\ref{fig:main} report rather than hide.
+Against the perfect-memory ceiling (late-half ${\approx}0.98$), the achievable
+memory headroom in the late half spans about $0.71$ \occ{}: the trained notepad
+captures ${\approx}48\%$ of it, the untrained notepad ${\approx}26\%$, and ICL
+${\approx}4\%$.
 
 \paragraph{The gain is memory, not skill.}
 Scan-1 \occ{}, measured on an empty notepad, moves by $+0.0004$ to $+0.0011$
@@ -391,7 +411,9 @@ is 100\%, 97\%, 60\%, and 90\%; one run truncates episodes early. Late bins
 therefore average only scans actually played ($n$ falls from 3840 to 3171), a
 disclosed survivorship bias. \emph{ICL condition.} The ICL bar is the untrained
 base model under a 4096-token per-turn cap; the trained-ICL check above mitigates
-but does not remove the asymmetry. \emph{Scale and scope.} One base model
+but does not remove the asymmetry. In the ICL condition 61\% of episodes complete
+all 30 scans; the decline is unchanged when restricted to complete episodes
+(Section~\ref{sec:results}). \emph{Scale and scope.} One base model
 (Qwen3-1.7B), one optimizer (GRPO), one task family; learning rate, temperature,
 and group size were not swept. \emph{Benchmark relation.} This is a
 re-implementation of the CLBench task family as an RL environment, not the
@@ -436,11 +458,11 @@ discover and to apply---is the natural next question.
 All numbers in Table~\ref{tab:main} and Figure~\ref{fig:main} are recomputable
 from raw data. The repository at
 \url{https://github.com/sr-networks/clbench-memory-rl} contains the raw
-per-episode, per-scan traces of all four conditions (54{,}420 rows), a script
+per-episode, per-scan traces of all five conditions (55{,}140 rows), a script
 that regenerates the figure and the binned table---including the bootstrap
 confidence intervals---from those traces alone, the executed reward code
-verbatim, the scripted no-memory agent, the task description, and the complete
-run registry. In the repository, runs are identified by opaque training-job IDs,
+verbatim, the scripted no-memory and perfect-memory agents, the task
+description, and the complete run registry. In the repository, runs are identified by opaque training-job IDs,
 so each published number is traceable to its source run.
 
 \begin{thebibliography}{9}
