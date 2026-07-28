@@ -3,11 +3,16 @@
     python3 code/make_figure.py          # needs only matplotlib/numpy
 
 Reads  data/raw_occ_traces.csv  — one row per (episode, scan): the occ-IoU of every scan of every
-episode of every condition (no_mem / perfect_mem / icl / notepad ep0 / notepad ep4; runs identified by
-training-job ID).
+episode of every condition (no_mem / perfect_mem / icl / icl_trained / notepad ep0 / notepad ep4; runs
+identified by training-job ID).
 Writes data/occ_by_scan_bin.csv  (bin means, per-run min/max, episode-bootstrap 95% CIs, sample sizes),
-       assets/occ_by_scan_bin.png (the five-bar figure in the write-up, with title and annotation),
+       assets/occ_by_scan_bin.png (the six-bar figure in the write-up, with title and annotation),
 and    paper/occ_by_scan_bin.png  (the same figure styled for the paper: no title, larger fonts).
+
+The `icl_trained` condition is the task-skill control. It is the four RL-trained notepad policies replayed
+in the ICL condition, with the notepad removed and the full scan history placed in the prompt instead. If
+that bar sits level with the untrained ICL bar, then what RL added was skill at using the memory tool and
+not general skill at the task itself.
 
 Nothing in the figure is hand-entered: every bar is an average over the raw rows in the CSV, so any
 number in the write-up can be checked against this script's output. The bootstrap resamples EPISODES
@@ -48,6 +53,7 @@ def eps(cond, epoch=None, run=None):
     return out
 
 RUNS = sorted({rn for (c, rn, ep) in episodes if c == "notepad"})
+RUNS_ICL4 = sorted({rn for (c, rn, ep) in episodes if c == "icl_trained"})
 
 def bin_means(ep_list):
     """Pooled mean occ per scan bin (every scan of every episode is one observation), plus counts."""
@@ -74,54 +80,73 @@ conds = {
     "no_mem": eps("no_mem"),
     "perfect": eps("perfect_mem"),
     "icl": eps("icl", epoch=0),
+    "icl4": eps("icl_trained", epoch=4),
     "np0": eps("notepad", epoch=0),
     "np4": eps("notepad", epoch=4),
 }
 stats = {k: bin_means(v) for k, v in conds.items()}
 cis = {k: bootstrap_ci(v) for k, v in conds.items()}
-run_means4 = {rn: bin_means(eps("notepad", epoch=4, run=rn))[0] for rn in RUNS}
-lo4 = [min(run_means4[rn][b] for rn in RUNS) for b in range(len(BINS))]
-hi4 = [max(run_means4[rn][b] for rn in RUNS) for b in range(len(BINS))]
 
-nomem, perf, icl, np0, np4 = (stats[k][0] for k in ("no_mem", "perfect", "icl", "np0", "np4"))
+
+def run_whisker(cond, epoch, runs):
+    """Min and max of the per-run bin means — the run-to-run spread drawn as a whisker."""
+    means = {rn: bin_means(eps(cond, epoch=epoch, run=rn))[0] for rn in runs}
+    lo = [min(means[rn][b] for rn in runs) for b in range(len(BINS))]
+    hi = [max(means[rn][b] for rn in runs) for b in range(len(BINS))]
+    return lo, hi
+
+
+lo4, hi4 = run_whisker("notepad", 4, RUNS)
+loI4, hiI4 = run_whisker("icl_trained", 4, RUNS_ICL4)
+
+nomem, perf, icl, icl4, np0, np4 = (stats[k][0]
+                                    for k in ("no_mem", "perfect", "icl", "icl4", "np0", "np4"))
 n4 = stats["np4"][1]
+nI4 = stats["icl4"][1]
 
-print("bin        no-mem    ICL   np-ep0  np-ep4  [run min–max]     np-ep4 95% CI     n_ep4  perfect")
+print("bin        no-mem    ICL  ICL-tr   np-ep0  np-ep4  [run min–max]     np-ep4 95% CI     n_ep4  perfect")
 for i, lb in enumerate(LABELS):
-    print(f"{lb:10} {nomem[i]:6.3f} {icl[i]:6.3f} {np0[i]:7.3f} {np4[i]:7.3f}  "
+    print(f"{lb:10} {nomem[i]:6.3f} {icl[i]:6.3f} {icl4[i]:6.3f} {np0[i]:7.3f} {np4[i]:7.3f}  "
           f"[{lo4[i]:.3f}–{hi4[i]:.3f}]  [{cis['np4'][0][i]:.3f}–{cis['np4'][1][i]:.3f}]  {n4[i]:6d}  {perf[i]:6.3f}")
 
 # ---- bin table ----
 with open(os.path.join(ROOT, "data", "occ_by_scan_bin.csv"), "w", newline="") as fh:
     w = csv.writer(fh)
-    w.writerow(["scan_bin", "no_mem", "icl", "notepad_untrained_ep0", "notepad_trained_ep4",
-                "perfect_mem",
+    w.writerow(["scan_bin", "no_mem", "icl", "icl_trained", "notepad_untrained_ep0",
+                "notepad_trained_ep4", "perfect_mem",
                 "notepad_trained_run_min", "notepad_trained_run_max", "n_trained_scans",
+                "icl_trained_run_min", "icl_trained_run_max", "n_icl_trained_scans",
                 "no_mem_ci95_lo", "no_mem_ci95_hi", "icl_ci95_lo", "icl_ci95_hi",
+                "icl_trained_ci95_lo", "icl_trained_ci95_hi",
                 "notepad_untrained_ci95_lo", "notepad_untrained_ci95_hi",
                 "notepad_trained_ci95_lo", "notepad_trained_ci95_hi",
                 "perfect_mem_ci95_lo", "perfect_mem_ci95_hi"])
     for i, lb in enumerate(LABELS):
-        w.writerow([lb.replace("scans ", ""), f"{nomem[i]:.4f}", f"{icl[i]:.4f}",
+        w.writerow([lb.replace("scans ", ""), f"{nomem[i]:.4f}", f"{icl[i]:.4f}", f"{icl4[i]:.4f}",
                     f"{np0[i]:.4f}", f"{np4[i]:.4f}", f"{perf[i]:.4f}",
-                    f"{lo4[i]:.4f}", f"{hi4[i]:.4f}", n4[i]]
-                   + [f"{cis[k][s][i]:.4f}" for k in ("no_mem", "icl", "np0", "np4", "perfect")
+                    f"{lo4[i]:.4f}", f"{hi4[i]:.4f}", n4[i],
+                    f"{loI4[i]:.4f}", f"{hiI4[i]:.4f}", nI4[i]]
+                   + [f"{cis[k][s][i]:.4f}"
+                      for k in ("no_mem", "icl", "icl4", "np0", "np4", "perfect")
                       for s in (0, 1)])
 print("written data/occ_by_scan_bin.csv")
 
 # ---- five-bar grouped chart: blog version (title + annotation) and paper version (clean) ----
-COLORS = dict(nomem="#dcdcdc", icl="#bcbddc", np0="#c6dbef", np4="#a1d99b", perf="#8f8f8f")
-VAL_COLORS = dict(np4="#1d7a34", icl="#756bb1", perf="0.25")
+COLORS = dict(nomem="#dcdcdc", icl="#bcbddc", icl4="#6a51a3", np0="#c6dbef", np4="#a1d99b",
+              perf="#8f8f8f")
+VAL_COLORS = dict(np4="#1d7a34", icl="#756bb1", icl4="#4a3480", perf="0.25")
 
 BLOG_LABELS = dict(
     nomem="no-mem — perfect scripted agent, reports only what it currently sees (floor: best possible without memory)",
-    icl="ICL — untrained base, full scan history in the prompt, no notepad (g7dncu2c ep0)",
+    icl="ICL, untrained — untrained base, full scan history in the prompt, no notepad (g7dncu2c ep0)",
+    icl4="ICL, RL-trained — the SAME 4 trained notepad policies replayed with no notepad (task-skill control; whisker = min–max of the 4 runs)",
     np0="notepad-untrained — untrained base WITH the notepad tools (4 runs, ep0, pooled)",
     np4="notepad-trained — RL-trained notepad (same 4 runs, ep4; whisker = min–max of the 4 runs)",
     perf="perfect-mem — perfect scripted agent with total recall of every channel ever seen (ceiling: perfect memory)")
 PAPER_LABELS = dict(
     nomem="no-memory floor (scripted oracle)",
-    icl="ICL — full scan history in the prompt",
+    icl="ICL, untrained — full scan history in the prompt",
+    icl4="ICL, RL-trained — same policies, notepad removed (task-skill control)",
     np0="notepad — untrained",
     np4="notepad — RL-trained (whisker: min–max of 4 runs)",
     perf="perfect-memory ceiling (scripted oracle)")
@@ -129,34 +154,42 @@ PAPER_LABELS = dict(
 
 def draw(path, paper=False):
     x = np.arange(len(LABELS))
-    w = 0.16
+    w = 0.135
     lab = PAPER_LABELS if paper else BLOG_LABELS
-    fig, ax = plt.subplots(figsize=(10.0, 6.0) if paper else (12.0, 7.4))
-    ax.bar(x - 2.0 * w, nomem, w, color=COLORS["nomem"], label=lab["nomem"])
-    ax.bar(x - 1.0 * w, icl, w, color=COLORS["icl"], label=lab["icl"])
-    ax.bar(x, np0, w, color=COLORS["np0"], label=lab["np0"])
-    ax.bar(x + 1.0 * w, np4, w, color=COLORS["np4"],
+    fig, ax = plt.subplots(figsize=(11.0, 6.4) if paper else (13.0, 7.8))
+    ax.bar(x - 2.5 * w, nomem, w, color=COLORS["nomem"], label=lab["nomem"])
+    ax.bar(x - 1.5 * w, icl, w, color=COLORS["icl"], label=lab["icl"])
+    ax.bar(x - 0.5 * w, icl4, w, color=COLORS["icl4"],
+           yerr=[np.subtract(icl4, loI4), np.subtract(hiI4, icl4)], capsize=3,
+           error_kw=dict(lw=1.1, ecolor=VAL_COLORS["icl4"]), label=lab["icl4"])
+    ax.bar(x + 0.5 * w, np0, w, color=COLORS["np0"], label=lab["np0"])
+    ax.bar(x + 1.5 * w, np4, w, color=COLORS["np4"],
            yerr=[np.subtract(np4, lo4), np.subtract(hi4, np4)], capsize=4,
            error_kw=dict(lw=1.3, ecolor=VAL_COLORS["np4"]), label=lab["np4"])
-    ax.bar(x + 2.0 * w, perf, w, color=COLORS["perf"], label=lab["perf"])
+    ax.bar(x + 2.5 * w, perf, w, color=COLORS["perf"], label=lab["perf"])
     fs_val = 10 if paper else 8
     for i in range(len(LABELS)):
-        ax.annotate(f"{np4[i]:.2f}", xy=(x[i] + 1.0 * w, hi4[i]), xytext=(0, 4),
+        ax.annotate(f"{np4[i]:.2f}", xy=(x[i] + 1.5 * w, hi4[i]), xytext=(0, 4),
                     textcoords="offset points", ha="center", fontsize=fs_val,
                     color=VAL_COLORS["np4"], fontweight="bold")
-        ax.annotate(f"{icl[i]:.2f}", xy=(x[i] - 1.0 * w, icl[i]), xytext=(0, 3),
-                    textcoords="offset points", ha="center", fontsize=fs_val, color=VAL_COLORS["icl"])
-        ax.annotate(f"{perf[i]:.2f}", xy=(x[i] + 2.0 * w, perf[i]), xytext=(0, 3),
+        # right-anchored so it clears the bold trained-ICL label one bar to the right; the text
+        # extends into the free airspace above the (unlabeled, shorter) no-mem bar
+        ax.annotate(f"{icl[i]:.2f}", xy=(x[i] - 1.5 * w, icl[i]), xytext=(-1, 3),
+                    textcoords="offset points", ha="right", fontsize=fs_val, color=VAL_COLORS["icl"])
+        ax.annotate(f"{icl4[i]:.2f}", xy=(x[i] - 0.5 * w, hiI4[i]), xytext=(0, 4),
+                    textcoords="offset points", ha="center", fontsize=fs_val,
+                    color=VAL_COLORS["icl4"], fontweight="bold")
+        ax.annotate(f"{perf[i]:.2f}", xy=(x[i] + 2.5 * w, perf[i]), xytext=(0, 3),
                     textcoords="offset points", ha="center", fontsize=fs_val, color=VAL_COLORS["perf"])
 
     if not paper:
         ax.annotate("ICL peaks at scans 6–10, then collapses as the history\ngrows — by 26–30 it is barely above the no-memory floor",
-                    xy=(5.0 - 1.0 * w, icl[5] * 0.6), xytext=(1.9, 1.015), fontsize=9.5,
+                    xy=(5.0 - 1.5 * w, icl[5] * 0.6), xytext=(1.75, 1.015), fontsize=9.5,
                     color=VAL_COLORS["icl"],
                     bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=VAL_COLORS["icl"], alpha=0.92),
                     arrowprops=dict(arrowstyle="->", color=VAL_COLORS["icl"], lw=1.2))
         ax.set_title("Can a trained notepad beat in-context history?  occ-IoU by scan position, qwen3-1.7b\n"
-                     "no-memory floor · free in-context history (ICL) · untrained notepad · RL-trained notepad · perfect-memory ceiling")
+                     "no-memory floor · in-context history untrained and RL-trained · notepad untrained and RL-trained · perfect-memory ceiling")
 
     fs_label = 15 if paper else 10
     fs_tick = 14 if paper else 10

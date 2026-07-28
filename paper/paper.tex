@@ -45,7 +45,9 @@ equipped with a notepad already surpasses ICL from step~6 onward \emph{without a
 training}; and (iii)~reinforcement learning further lifts late-episode accuracy from
 0.45 to 0.61 occupied-IoU---replicated in direction across four independent runs---%
 while first-step accuracy, where the notepad is empty, remains unchanged
-($0.216 \rightarrow 0.217$), confirming that the gain is memory use rather than task
+($0.216 \rightarrow 0.217$), and the trained policies, replayed \emph{without} the
+notepad, recover none of the gain---they score at or below the untrained ICL
+baseline throughout---confirming that the gain is memory use rather than task
 skill. The reported notepad--ICL gap is therefore regime-dependent: over long
 horizons a trained (and even an untrained) external memory dominates in-context
 history.
@@ -90,9 +92,10 @@ by penalty, and by measurement (Section~\ref{sec:reward}).
 
 Our contributions are: (1)~a memory-only reward for a long-horizon monitoring task,
 red-teamed against blanket-reporting and weight-memorization exploits before
-training; (2)~a five-condition comparison---scripted no-memory floor, full-history
-ICL, untrained notepad, RL-trained notepad, scripted perfect-memory
-ceiling---aligned by step position within the episode; and (3)~evidence that the published notepad--ICL gap reverses
+training; (2)~a six-condition comparison---scripted no-memory floor, full-history
+ICL, the trained policies replayed under ICL with the notepad removed (a
+task-skill ablation), untrained notepad, RL-trained notepad, scripted
+perfect-memory ceiling---aligned by step position within the episode; and (3)~evidence that the published notepad--ICL gap reverses
 over long horizons: ICL degrades as the transcript grows, consistent with known
 long-context limitations~\cite{lostinthemiddle}, while the trained notepad accuracy
 rises and holds.
@@ -285,7 +288,7 @@ epoch~0; ``pooled'' means that the episodes of all four replicate runs are
 aggregated and treated as one sample ($4 \times 192$ episodes per epoch).
 
 \paragraph{Conditions.}
-The central comparison aligns five conditions by scan position within the episode:
+The central comparison aligns six conditions by scan position within the episode:
 \begin{center}
 \footnotesize
 \begin{tabular}{@{}llll@{}}
@@ -294,6 +297,7 @@ condition & policy & memory & rollouts \\
 \midrule
 no-mem & scripted perfect memoryless agent & none (floor) & deterministic replay \\
 ICL & untrained base, full history in prompt & in-context & 288 \\
+ICL-replay & the four ep4 policies, notepad removed & in-context & $4\times288$ (pooled) \\
 notepad-untrained & untrained base with notepad tools & notepad & $4\times192$ (ep0, pooled) \\
 notepad-trained & same four runs after RL & notepad & $4\times192$ (ep4, pooled) \\
 perfect-mem & same scripted agent with total recall & perfect (ceiling) & deterministic replay \\
@@ -301,8 +305,11 @@ perfect-mem & same scripted agent with total recall & perfect (ceiling) & determ
 \end{tabular}
 \end{center}
 ICL-versus-notepad-untrained is a pure comparison of memory \emph{interface} (same
-weights); notepad-untrained-versus-trained isolates the \emph{training} effect.
-Scores are pooled into six bins of five consecutive scans.
+weights); notepad-untrained-versus-trained isolates the \emph{training} effect;
+ICL-versus-ICL-replay is the transfer test---each trained policy evaluated in the
+ICL condition, before any further gradient step, under the ICL arm's exact
+configuration (dataset, prompts, 4096-token cap, sampling). Scores are pooled into
+six bins of five consecutive scans.
 
 \section{Results}
 \label{sec:results}
@@ -310,13 +317,17 @@ Scores are pooled into six bins of five consecutive scans.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{occ_by_scan_bin.png}
-\caption{Occupied-IoU by scan position within the 30-scan episode, for the five
-conditions. Full-history ICL (purple) peaks at scans 6--10 and then degrades as the
-transcript grows, ending barely above the scripted no-memory floor (light grey).
-The untrained notepad (light blue) surpasses ICL from scan~6 onward; RL
+\caption{Occupied-IoU by scan position within the 30-scan episode, for the six
+conditions. Full-history ICL (light purple) peaks at scans 6--10 and then degrades
+as the transcript grows, ending barely above the scripted no-memory floor (light
+grey). The untrained notepad (light blue) surpasses ICL from scan~6 onward; RL
 (green; whiskers give the min--max of the four replicate runs) lifts late-episode
-accuracy to ${\approx}0.61$. The scripted perfect-memory ceiling (dark grey)
-rises from 0.60 to 0.99 as the episode uncovers the band.}
+accuracy to ${\approx}0.61$. The ICL-replay control (dark purple) evaluates the
+same four trained policies with the notepad removed and the full history in the
+prompt: they score at or below the untrained ICL baseline in every bin and end at
+the no-memory floor, so the trained gain does not transfer to the task itself. The
+scripted perfect-memory ceiling (dark grey) rises from 0.60 to 0.99 as the episode
+uncovers the band.}
 \label{fig:main}
 \end{figure}
 
@@ -324,27 +335,31 @@ rises from 0.60 to 0.99 as the episode uncovers the band.}
 \centering
 \caption{Occupied-IoU by scan-position bin (higher is better; bold marks the best
 model condition). Notepad columns pool four replicate runs; the bracketed range is
-the min--max of the four per-run means at ep4. The perfect-mem column is the
-scripted total-recall ceiling. $n$ is the number of trained-condition scan
-observations pooled per bin. Episode-level bootstrap 95\% confidence intervals of
-the pooled bin means (2000 resamples of whole episodes) are no wider than
-$\pm 0.011$ for the notepad conditions and $\pm 0.022$ for any model condition
-($\pm 0.046$ for the 24-episode scripted ceiling); beyond the first bin the five
-conditions' intervals are pairwise non-overlapping. Full CIs ship with the data
-(Data availability).}
+the min--max of the four per-run means at ep4. ICL-replay pools the same four ep4
+policies evaluated without the notepad (per-run late-half means 0.255--0.300). The
+perfect-mem column is the scripted total-recall ceiling. $n$ is the number of
+trained-condition scan observations pooled per bin. Episode-level bootstrap 95\%
+confidence intervals of the pooled bin means (2000 resamples of whole episodes)
+are no wider than $\pm 0.011$ for the notepad conditions and $\pm 0.022$ for any
+model condition ($\pm 0.046$ for the 24-episode scripted ceiling); beyond the
+first bin the intervals of the five original conditions are pairwise
+non-overlapping, and the ICL-replay interval sits significantly below the
+untrained-ICL interval through scans 16--20 and becomes statistically
+indistinguishable from the no-memory floor from scans 16--20 onward. Full CIs
+ship with the data (Data availability).}
 \label{tab:main}
 \footnotesize
 \setlength{\tabcolsep}{4.0pt}
-\begin{tabular}{@{}lcccccc@{}}
+\begin{tabular}{@{}lccccccc@{}}
 \toprule
-scans & no-mem & ICL & notepad ep0 & notepad ep4 & perfect-mem & $n_{\mathrm{ep4}}$ \\
+scans & no-mem & ICL & ICL-replay & notepad ep0 & notepad ep4 & perfect-mem & $n_{\mathrm{ep4}}$ \\
 \midrule
-1--5   & 0.257 & \textbf{0.348} & 0.332 & 0.394 \,[0.301--0.478] & 0.603 & 3840 \\
-6--10  & 0.264 & 0.378 & 0.436 & \textbf{0.559} \,[0.421--0.656] & 0.895 & 3840 \\
-11--15 & 0.268 & 0.371 & 0.431 & \textbf{0.581} \,[0.463--0.666] & 0.950 & 3825 \\
-16--20 & 0.270 & 0.308 & 0.455 & \textbf{0.595} \,[0.501--0.662] & 0.968 & 3808 \\
-21--25 & 0.268 & 0.294 & 0.454 & \textbf{0.615} \,[0.540--0.679] & 0.980 & 3737 \\
-26--30 & 0.266 & 0.286 & 0.453 & \textbf{0.612} \,[0.553--0.678] & 0.991 & 3171 \\
+1--5   & 0.257 & \textbf{0.348} & 0.300 & 0.332 & 0.394 \,[0.301--0.478] & 0.603 & 3840 \\
+6--10  & 0.264 & 0.378 & 0.306 & 0.436 & \textbf{0.559} \,[0.421--0.656] & 0.895 & 3840 \\
+11--15 & 0.268 & 0.371 & 0.297 & 0.431 & \textbf{0.581} \,[0.463--0.666] & 0.950 & 3825 \\
+16--20 & 0.270 & 0.308 & 0.280 & 0.455 & \textbf{0.595} \,[0.501--0.662] & 0.968 & 3808 \\
+21--25 & 0.268 & 0.294 & 0.275 & 0.454 & \textbf{0.615} \,[0.540--0.679] & 0.980 & 3737 \\
+26--30 & 0.266 & 0.286 & 0.259 & 0.453 & \textbf{0.612} \,[0.553--0.678] & 0.991 & 3171 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -395,6 +410,21 @@ memory score (visible channels carry no reward), the anchor penalty, and the
 remaining penalties, every improvement in Table~\ref{tab:main} is attributable to
 carrying information forward.
 
+\paragraph{Ablation: removing the notepad removes the entire gain.}
+The ICL-replay condition makes the same point from the other side. Each of the
+four trained policies was evaluated in the ICL condition---notepad tools removed,
+the full scan history in the prompt---under the untrained ICL arm's exact
+configuration. Any generic task skill acquired during training (better peak
+reading, report formatting, knowledge of the band layout) would transfer to this
+setting; memory-tool skill cannot. The replayed policies score below the untrained
+base in every bin (pooled late half 0.272 vs.\ 0.297; the best single run reaches
+0.300) and are statistically indistinguishable from the no-memory floor over the
+late half. Their behavior is otherwise intact: 27.6--30.0 scans completed per
+episode on average (untrained: 29.4), with ordinary task reasoning and no attempts
+to invoke the absent tools. What RL taught therefore lives entirely in the
+interaction with the notepad---removing the tool recovers the base model, with a
+small specialization cost.
+
 \paragraph{Training ICL does not fix the collapse.}
 For completeness we also trained an ICL arm under a dense per-scan accuracy reward
 (4096-token per-turn cap). It learned to degrade somewhat less over
@@ -410,9 +440,10 @@ constraint at this model scale, not an artifact of the untrained comparison.
 is 100\%, 97\%, 60\%, and 90\%; one run truncates episodes early. Late bins
 therefore average only scans actually played ($n$ falls from 3840 to 3171), a
 disclosed survivorship bias. \emph{ICL condition.} The ICL bar is the untrained
-base model under a 4096-token per-turn cap; the trained-ICL check above mitigates
-but does not remove the asymmetry. In the ICL condition 61\% of episodes complete
-all 30 scans; the decline is unchanged when restricted to complete episodes
+base model under a 4096-token per-turn cap; the trained ICL arm and the
+ICL-replay control (Section~\ref{sec:results}) mitigate but do not remove the
+asymmetry. In the ICL condition 61\% of episodes complete all 30 scans; the
+decline is unchanged when restricted to complete episodes
 (Section~\ref{sec:results}). \emph{Scale and scope.} One base model
 (Qwen3-1.7B), one optimizer (GRPO), one task family; learning rate, temperature,
 and group size were not swept. \emph{Benchmark relation.} This is a
@@ -458,7 +489,7 @@ discover and to apply---is the natural next question.
 All numbers in Table~\ref{tab:main} and Figure~\ref{fig:main} are recomputable
 from raw data. The repository at
 \url{https://github.com/sr-networks/clbench-memory-rl} contains the raw
-per-episode, per-scan traces of all five conditions (55{,}140 rows), a script
+per-episode, per-scan traces of all six conditions (88{,}778 rows), a script
 that regenerates the figure and the binned table---including the bootstrap
 confidence intervals---from those traces alone, the executed reward code
 verbatim, the scripted no-memory and perfect-memory agents, the task

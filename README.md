@@ -12,8 +12,9 @@ over a long episode) is the interesting part. We also document, honestly, where 
 **One-line result:** over a 30-scan continual-monitoring episode, in-context history wins only the first few
 scans, then **collapses** as the transcript grows — by the end it's barely above a no-memory baseline. An
 **untrained** notepad already beats ICL from scan 6 on; **RL-trained**, it climbs to ~0.61 occ-IoU and holds
-— and it does so *without improving the single-step task* (scan-1 accuracy, where the notepad is empty, is
-identical trained vs. untrained).
+— and it does so *without improving the single-step task*: scan-1 accuracy, where the notepad is empty, is
+identical trained vs. untrained, and replaying the trained policies *without* the notepad drops them to the
+no-memory floor.
 
 ## What's in here
 
@@ -21,18 +22,19 @@ identical trained vs. untrained).
 |---|---|
 | **[blogpost.md](blogpost.md)** | The full write-up, with the central figure and the honesty caveats. |
 | **[paper/paper.pdf](paper/paper.pdf)** | The same result as a short scientific paper (LaTeX source in [`paper/`](paper/)). |
-| **[REGISTRY.md](REGISTRY.md)** | **Every training run this project bought — all 43, including every failure** — so the survivorship is auditable. |
+| **[REGISTRY.md](REGISTRY.md)** | **Every training run this project bought — all 47, including every failure** — so the survivorship is auditable. |
 | **[task/task_description.md](task/task_description.md)** | The CLBench-derived tasks — real prompts, the memory-only reward, and the anti-cheating design. |
 | **[data/](data/)** | The numbers as CSV, **including the raw per-episode/per-scan traces** behind the figure. See the [data dictionary](data/README.md). |
 | **[code/](code/)** | The executed reward code (verbatim), the scripted no-memory agent, and a script that regenerates the figure from the raw traces. |
 | **[assets/](assets/)** | The figures. |
 
-## The five conditions in the figure
+## The six conditions in the figure
 
 | condition | what it is | memory | late-half occ (scans 16–30) |
 |---|---|---|---|
 | **no-mem** | scripted perfect agent — reports only what it currently sees, run through the real engine | none (floor) | ~0.27 |
-| **ICL** | untrained base model, full scan history in the prompt, no notepad | in-context | **0.297** |
+| **ICL, untrained** | untrained base model, full scan history in the prompt, no notepad | in-context | **0.297** |
+| **ICL, RL-trained** | the four notepad-trained policies replayed with the notepad removed and full history in the prompt — the task-skill control | in-context | 0.272 |
 | **notepad-untrained** | the *same* untrained model, but with the notepad tools + windowed context | notepad | 0.454 |
 | **notepad-trained** | that model after RL on a memory-only reward | notepad | **0.607** |
 | **perfect-mem** | the same scripted agent with total recall of every channel ever seen | perfect (ceiling) | ~0.98 |
@@ -42,16 +44,21 @@ comparison. `perfect-mem` is the ceiling: the identical scripted agent with a pe
 low too (on early scans nobody can know the yet-unseen channels) and climbs to ~0.99 as the episode uncovers
 the band. Between those bounds, the trained notepad captures ~48% of the achievable memory headroom in the
 late half; ICL captures ~4%. ICL vs. notepad-untrained is a pure memory-*mode* comparison (same weights);
-notepad-untrained vs. notepad-trained isolates the *training* effect. Runs: Qwen3-1.7B, GRPO with LoRA
+notepad-untrained vs. notepad-trained isolates the *training* effect; ICL-untrained vs. ICL-RL-trained is
+the *transfer* test — the trained policies, denied their notepad, score no better than the untrained base
+(and slightly worse), so what RL taught was tool use, not task skill. Runs: Qwen3-1.7B, GRPO with LoRA
 adapters on a managed RL fine-tuning service. Notepad bars pool four replicate runs (`s8e07n53`,
-`yp8deoer`, `kym4znjc`, `wqjyy66p`); ICL is job `g7dncu2c` (ep0).
+`yp8deoer`, `kym4znjc`, `wqjyy66p`); untrained ICL is job `g7dncu2c` (ep0); the trained-ICL control replays
+those same four adapters (jobs `ijhm1hoe`, `d6tlmffh`, `xngwuqft`, `xjromrh7`).
 
 ## Why it's memory, not task skill
 
 The reward pays for exactly one thing — reporting channels that are **invisible now but were seen earlier**
 (orthogonal to what's on screen). An anchor guard pins the near-memory-free opening scans to the memoryless
-floor. And on **scan 1**, where the notepad is empty, trained and untrained score identically (+0.0004 to
-+0.0011 across four runs): the model got better at *carrying information forward*, not at the task. Guards
+floor. On **scan 1**, where the notepad is empty, trained and untrained score identically (+0.0004 to
++0.0011 across four runs). And the ablation seals it: replayed **without the notepad**, the trained policies
+fall below the untrained base in every scan bin and end at the no-memory floor — nothing RL taught survives
+the removal of the tool. The model got better at *carrying information forward*, not at the task. Guards
 against blanket-report and weight-baking cheats round out the design (see the blog + task description).
 
 ## Honesty box
@@ -78,8 +85,8 @@ The central figure is **recomputable from raw data in this repo**:
 python3 code/make_figure.py     # matplotlib/numpy only
 ```
 
-reads the raw per-episode, per-scan traces ([`data/raw_occ_traces.csv`](data/raw_occ_traces.csv), 55,140
-rows — every scan of every episode of all five conditions) and regenerates
+reads the raw per-episode, per-scan traces ([`data/raw_occ_traces.csv`](data/raw_occ_traces.csv), 88,778
+rows — every scan of every episode of all six conditions) and regenerates
 [`data/occ_by_scan_bin.csv`](data/occ_by_scan_bin.csv) (bin means, per-run min/max, episode-bootstrap 95%
 CIs) and the figure PNG. Nothing in the figure is hand-entered. The reward code the training jobs executed
 is vendored verbatim in [`code/spectrum_reward.py`](code/spectrum_reward.py) (with a standalone

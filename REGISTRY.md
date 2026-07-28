@@ -1,7 +1,7 @@
 # Run registry — every training run in this project
 
 Selective reporting is the quiet failure mode of RL write-ups: train many, show the winner. This project
-bought **43 training jobs**; the headline figure rests on **4** of them. This file lists *all* of them, in
+bought **47 training jobs**; the headline figure rests on **4** of them. This file lists *all* of them, in
 approximately chronological order, including the failures, the cancelled run, the confounded run, and the
 replication that did not reproduce — so the survivorship is auditable rather than taken on faith.
 
@@ -37,6 +37,30 @@ How to read the tables:
 | `aesye5sz` `moh612qy` `upbrxew7` `w6swb23z` | scr1–4 *(8 candidates, 5 epochs — screening cadence)* | identical to `pscoc9fp` | 4 identical copies — a direct **seed-variance yardstick** | ✗ **0 of 4** basin entries in 5 epochs; endpoint spread 0.417–0.475. Establishes the noise band any knob effect must clear. |
 | `qv2mk5k0` `xoi922eh` `t37x35oj` `aic2o1up` | dormc1–4 | dormant coverage − **4** guards: + completion hinge 1.5 × max(0, 30 − n − 2)/30 — "paid only for memory, and only if you finish" | + completion guard (kills `pyl9pkw8`'s truncation exploit); lr 2e-4 kept; screening cadence | ✓ **Memory-learning is repeatable:** all 4 scan-1-flat and exploit-free; complete-episode dormant coverage up in every run (+0.037/+0.122/+0.219/+0.267). Residual: 3 of 4 still truncated at the 8192 cap (taxed, not prevented) — the cap, not cheating, became the bottleneck. |
 | `s8e07n53` `yp8deoer` `kym4znjc` `wqjyy66p` | **dormc16k-1–4 — the headline runs** | identical to dormc1–4 | turn cap 8192 → **16384** tokens | ✓ **The write-up's result:** all 4 scan-1-flat (+0.0004…+0.0011); dormant coverage up in every run (+0.041/+0.101/+0.181/+0.182); ep4 completion 100/97/60/90% (one run still truncates — disclosed as survivorship in the figure's `n` column). |
+
+## Task-skill control — the trained policies replayed in ICL mode (the dark-purple bar)
+
+The control that separates "learned to use the notepad" from "got better at the task": each headline
+adapter replayed in the **ICL condition** — notepad tools removed, full scan history in the prompt. Each
+replay is a 1-epoch job started from the trained adapter against the ICL twin's exact configuration
+(same dataset, evaluator, 4096-token turn cap, temperature 1.2, 12 candidates as `g7dncu2c`); the number
+used is the **epoch-0 evaluation**, i.e. the trained policy *before* any new gradient step, and the replay
+job's own one-epoch output model is discarded. Comparator: untrained ICL (`g7dncu2c` ep0) mean occ 0.332,
+late half 0.297.
+
+| replay job | replays (adapter from) | outcome (epoch-0 eval, mean occ / late half) |
+|---|---|---|
+| `ijhm1hoe` | `s8e07n53` | 0.276 / 0.261 — below the untrained ICL base |
+| `d6tlmffh` | `yp8deoer` | 0.265 / 0.256 — below the untrained base, at the no-memory floor |
+| `xngwuqft` | `kym4znjc` | 0.305 / 0.300 — best of the four; parity with the untrained base |
+| `xjromrh7` | `wqjyy66p` | 0.303 / 0.276 — below the untrained base |
+
+✓ **Verdict: zero task-skill transfer.** Pooled, the trained policies score below the untrained base in
+every scan bin (late half 0.272 vs 0.297) and end the episode at the no-memory floor (0.259 vs floor
+0.266 in scans 26–30). Completion is normal (27.6–30.0 scans/episode) and the transcripts show ordinary
+task reasoning with no attempts to call the missing notepad tools — the drop is absence of transferable
+skill, not a broken interface. Together with the flat scan-1 measurement, this closes the "RL secretly
+taught the task" loophole from both sides.
 
 ## Predecessor experiments — environment-echoed running list (before the agent-maintained notepad)
 
@@ -78,8 +102,9 @@ base model. Numbers in [`data/dbx_second_task.csv`](data/dbx_second_task.csv).
 
 ---
 
-**Tally:** 43 training jobs — 26 main series (25 notepad arms + the ICL comparison arm), 9 predecessor,
-3 early exploratory, 5 second task — plus one local, non-training sufficiency evaluation. Wins: the dormant-reward family trained repeatably (8 runs with the guarded reward, 8
-scan-1-flat, dormant coverage up in all 8); everything else above is a documented failure, control, or
+**Tally:** 47 training jobs — 26 main series (25 notepad arms + the ICL comparison arm), 4 ICL-replay
+task-skill controls, 9 predecessor, 3 early exploratory, 5 second task — plus one local, non-training
+sufficiency evaluation. Wins: the dormant-reward family trained repeatably (8 runs with the guarded reward,
+8 scan-1-flat, dormant coverage up in all 8); everything else above is a documented failure, control, or
 predecessor. The four headline runs were not selected *from* this list after the fact — they are the last
 four runs of the design sequence the failures forced.
